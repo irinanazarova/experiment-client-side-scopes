@@ -56,7 +56,7 @@ Declared and named, like `ClientScope`:
 ```ruby
 LiveRegion.register :totals,
   partial: "sheets/totals",
-  watch:   ->(sheet) { Cells::ClientQueries.new(sheet).column_sums_sql },
+  watch:   ->(sheet) { Cells::ColumnAggregates.new(sheet).sums_sql },
   locals:  ->(sheet) { {sheet:, sums: Cells::ColumnAggregates.new(sheet).by_column, ...} }
 ```
 
