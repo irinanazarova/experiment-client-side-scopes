@@ -1,0 +1,35 @@
+# The slice's own origin. Caddy serves the built PWA statically and proxies the
+# three host-Rails API paths, so from the browser everything is same-origin (no
+# CORS) — the production equivalent of the Vite dev proxy. The service worker,
+# once installed, serves /sheets/* etc. from the in-VM Rails; those requests
+# never reach Caddy. Fly terminates TLS at the edge, so Caddy serves plain HTTP.
+:8080 {
+	encode gzip
+
+	# Issuing the authorized shape config, the write authority, and the signed
+	# Electric stream all live on the host Rails.
+	@host path /client_scopes* /cells* /electric*
+	handle @host {
+		reverse_proxy https://client-side-scopes.fly.dev {
+			header_up Host client-side-scopes.fly.dev
+		}
+	}
+
+	# Everything else is the static slice. "/" and any cold app navigation fall
+	# back to index.html (the loading screen), which installs the service worker
+	# and then enters the app. Once the worker controls this origin, those
+	# navigations are served from the in-VM Rails and never reach Caddy.
+	#
+	# precompressed serves the build-time app.wasm.br / .gz when the client
+	# accepts it (every modern browser sends br), so the 130MB wasm ships as a
+	# ~32MB static brotli file with no per-request compression. `encode` above
+	# still handles the proxied host responses and any asset without a
+	# precompressed sibling; it skips anything already encoded.
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server {
+			precompressed br gzip
+		}
+	}
+}

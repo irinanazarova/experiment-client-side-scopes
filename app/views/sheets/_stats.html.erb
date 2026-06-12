@@ -1,0 +1,7 @@
+<%# Inner content of the :stats live region (watches stats_sql). %>
+<% {Max: stats.max, Min: stats.min, Average: stats.avg, Median: stats.median}.each do |label, value| %>
+  <div class="p-3 rounded-lg border bg-white">
+    <div class="text-[11px] uppercase tracking-wide text-gray-400"><%= label %></div>
+    <div class="text-3xl font-bold text-gray-900 tabular-nums" id="stat-<%= label.downcase %>"><%= cell_number(value) %></div>
+  </div>
+<% end %>

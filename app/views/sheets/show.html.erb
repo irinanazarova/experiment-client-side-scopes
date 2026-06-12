@@ -1,0 +1,180 @@
+<% content_for :title, "#{@sheet.name} — client-side scopes" %>
+
+<div class="w-full max-w-[92rem] mx-auto"
+     id="sheet-app"
+     data-sheet-id="<%= @sheet.id %>"
+     data-scope-url="<%= client_scope_path('sheet_cells', sheet_id: @sheet.id) %>"
+     data-bulk-url="<%= cells_bulk_updates_path %>"
+     data-ticks-url="<%= cells_ticks_path %>"
+     data-grid-url="<%= grid_sheet_path(@sheet) %>"
+     data-csrf="<%= form_authenticity_token %>"
+     data-row-count="<%= @sheet.row_count %>"
+     data-col-count="<%= @sheet.col_count %>"
+     data-row-limit="<%= @grid[:row_limit] %>"
+     data-sums-sql="<%= @client_queries.column_sums_sql %>"
+     data-grand-total-sql="<%= @client_queries.grand_total_sql %>"
+     data-stats-sql="<%= @client_queries.stats_sql %>">
+
+  <div class="lg:flex lg:gap-6 lg:items-start">
+  <div class="lg:flex-1 lg:min-w-0">
+
+  <header class="mb-4">
+    <h1 class="text-2xl font-bold"><%= @sheet.name %></h1>
+    <p class="text-sm text-gray-500">
+      <%= number_with_delimiter(@sheet.cells.count) %> cells
+      (<%= @sheet.row_count %> × <%= @sheet.col_count %>) in a PGlite replica in your
+      browser. The stats, the <strong>Max</strong> column and the <strong>Σ</strong> row
+      are computed locally by SQL. Click a cell to edit; writes go to Rails and
+      reconcile through Electric.
+    </p>
+    <p id="status" class="text-sm mt-1 text-amber-600">Booting local replica…</p>
+  </header>
+
+  <section class="mb-4 p-3 rounded-lg border bg-white flex items-end gap-3 flex-wrap">
+    <label class="text-sm">Column
+      <input id="op-col" type="number" value="3" min="1" max="<%= @sheet.col_count %>"
+             class="block border rounded px-2 py-1 w-20">
+    </label>
+    <label class="text-sm">Operation
+      <%# Default to add (+100): a visible jump in the Σ row that stays stable
+          on repeated clicks. multiply compounds and overflows numeric after a
+          handful of applies, an easy way to wedge the demo. %>
+      <select id="op-kind" class="block border rounded px-2 py-1">
+        <option value="add" selected>add +</option>
+        <option value="multiply">multiply ×</option>
+        <option value="set">set =</option>
+      </select>
+    </label>
+    <label class="text-sm">Operand
+      <input id="op-operand" type="number" value="100" step="1"
+             class="block border rounded px-2 py-1 w-24">
+    </label>
+    <%# Amber, the same colour as the local-edit flash: "your change" reads
+        yellow throughout, mirroring the green server-activity button + green
+        remote flash. %>
+    <button id="apply-btn"
+            class="text-white rounded px-4 py-2 text-sm font-medium disabled:opacity-50">
+      Apply to whole column
+    </button>
+    <%# Demo toggle: while on, your writes carry reject=1 and the host authority
+        refuses them, so an edit applies optimistically then rolls back. Makes
+        the loop's reconcile/safety step visible. %>
+    <button id="reject-btn" type="button" role="switch" aria-checked="false"
+            class="ml-auto inline-flex items-center gap-2 rounded px-3 py-2 text-sm font-medium border border-rose-600 text-rose-700 hover:bg-rose-50">
+      <span class="dot inline-block w-2 h-2 rounded-full bg-rose-400"></span>
+      <span class="label">Server rejects writes: off</span>
+    </button>
+    <button id="server-activity-btn" type="button" role="switch" aria-checked="false"
+            class="inline-flex items-center gap-2 rounded px-3 py-2 text-sm font-medium border border-emerald-600 text-emerald-700 hover:bg-emerald-50">
+      <span class="dot inline-block w-2 h-2 rounded-full bg-emerald-400"></span>
+      <span class="label">Server activity: off</span>
+    </button>
+    <span id="timing" class="text-xs text-gray-400 w-full text-right"></span>
+  </section>
+
+  <%# The live region: first paint is server-rendered from real data (host:
+      server Postgres; Wasm build: the replica). The slice page morphs this
+      whole region with re-rendered fragments; host mode patches its parts
+      from PGlite live queries. %>
+  <div id="sheet-live">
+    <%= render "sheets/grid", **@grid %>
+  </div>
+
+  </div><%# /main column %>
+
+  <%# Live data-flow trace, in the right sidebar: each gesture lights the hops
+      it travels, so the "reads local, writes to the authority, reconcile via
+      Electric" loop is visible while you use it. Driven by BroadcastChannel
+      from whichever renderer is active (host JS or the in-browser Rails SW). %>
+  <aside class="lg:w-96 lg:shrink-0 mt-4 lg:mt-0">
+    <section id="flow-panel" class="p-3 rounded-lg border bg-white lg:sticky lg:top-4"></section>
+  </aside>
+
+  </div><%# /two-column row %>
+</div>
+
+<%# Grid styling is plain CSS so it does not depend on the Tailwind content
+    scanner seeing class names that are generated in JS. %>
+<style>
+  .ss-wrap { border: 1px solid #e5e7eb; border-radius: .5rem; background: #fff; overflow: auto; max-height: 620px; }
+  .ss { border-collapse: separate; border-spacing: 0; font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; width: 100%; }
+  .ss th, .ss td { border-right: 1px solid #eef0f3; border-bottom: 1px solid #eef0f3; padding: 4px 8px; white-space: nowrap; }
+  .ss thead th { position: sticky; top: 0; z-index: 3; background: #f3f4f6; color: #4b5563; font-weight: 600; text-align: center; min-width: 76px; }
+  .ss-totals td { position: sticky; top: 26px; z-index: 2; background: #eef2ff; color: #3730a3; font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; }
+  .ss-totals td.ss-corner { background: #e0e7ff; text-align: center; }
+  .ss-corner, .ss-rownum { position: sticky; left: 0; z-index: 1; width: 44px; min-width: 44px; max-width: 44px; }
+  .ss thead th.ss-corner { z-index: 4; min-width: 44px; }
+  .ss-rownum { background: #f9fafb; color: #9ca3af; text-align: center; }
+
+  /* The computed Max column: second sticky column, offset by the row-number
+     column's fixed width. */
+  .ss-rowmax { position: sticky; left: 44px; z-index: 1; background: #f0fdf4; color: #166534; text-align: right; font-variant-numeric: tabular-nums; width: 92px; min-width: 92px; max-width: 92px; }
+  .ss thead th.ss-rowmax { z-index: 4; background: #ecfdf5; color: #065f46; }
+  .ss-totals td.ss-corner, .ss-totals td.ss-rowmax { z-index: 3; }
+  .ss-totals td.ss-rowmax { background: #d1fae5; color: #065f46; }
+
+  .ss-cell { text-align: right; font-variant-numeric: tabular-nums; cursor: cell; background: #fff; }
+  .ss-cell:hover { background: #fffbeb; }
+
+  /* Update blinks: green = a change from elsewhere (server tick / other client),
+     yellow = a change this user just made. A bold colour + inset outline at the
+     start makes a single-cell update easy to catch, then it fades to white. */
+  @keyframes flashRemote {
+    0%  { background-color: #16a34a; color: #fff; box-shadow: inset 0 0 0 2px #15803d; }
+    35% { background-color: #4ade80; color: #052e16; box-shadow: inset 0 0 0 1px #22c55e; }
+    100% { background-color: #fff; box-shadow: none; }
+  }
+  @keyframes flashLocal {
+    0%  { background-color: #f59e0b; color: #fff; box-shadow: inset 0 0 0 2px #b45309; }
+    35% { background-color: #fcd34d; color: #422006; box-shadow: inset 0 0 0 1px #f59e0b; }
+    100% { background-color: #fff; box-shadow: none; }
+  }
+  .ss-cell.flash-remote { animation: flashRemote 1.5s ease-out; }
+  .ss-cell.flash-local  { animation: flashLocal 1.5s ease-out; }
+
+  /* The Apply (your-edit) button wears the same amber as the local-edit flash,
+     so "your change" reads yellow throughout, mirroring the green
+     server-activity button and the green remote flash. */
+  #apply-btn { background: #f59e0b; }
+  #apply-btn:hover:not(:disabled) { background: #d97706; }
+
+  /* Server-activity toggle */
+  #server-activity-btn.active { background: #059669; color: #fff; border-color: #059669; }
+  #server-activity-btn.active .dot { background: #fff; animation: pulse 1.1s ease-in-out infinite; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
+
+  /* Server-rejects-writes toggle (the rollback/safety demo) */
+  #reject-btn.active { background: #e11d48; color: #fff; border-color: #e11d48; }
+  #reject-btn.active .dot { background: #fff; animation: pulse 1.1s ease-in-out infinite; }
+  .ss-cell input { width: 100%; box-sizing: border-box; text-align: right; border: 1px solid #6366f1; border-radius: 3px; padding: 1px 3px; font: inherit; }
+
+  /* Live flow-trace panel — three diagrams side by side, each a VERTICAL column
+     of stations on a shared five-row backbone. A node is a station on a rail
+     that runs top to bottom; a dashed rail segment is a hop the path skips. The
+     three columns line up row-for-row (Edit at the top, Render at the bottom),
+     so you read the path-length difference at a glance. */
+  #flow-panel { overflow: hidden; }
+  .flow-head { font-size: 15px; font-weight: 700; color: #1e293b; margin-bottom: 14px; }
+  .flow-mode { display: block; margin-top: 3px; font-size: 12px; font-weight: 500; color: #94a3b8; }
+  .flow-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .flow-diagram { min-width: 0; }
+  .flow-diagram-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: #94a3b8; margin-bottom: 6px; text-align: center; line-height: 1.25; min-height: 2.6em; }
+  .flow-track { display: grid; grid-template-rows: repeat(5, 1fr); }
+  /* the vertical rail behind the column; node boxes (white) sit on top and hide
+     it between them, so it reads as a downward line with stations. */
+  .flow-cell { position: relative; min-height: 48px; display: flex; align-items: center; justify-content: center; padding: 0 2px; }
+  .flow-cell::before { content: ""; position: absolute; left: 50%; top: 0; bottom: 0; width: 2px; transform: translateX(-50%); background: #e5e7eb; z-index: 0; }
+  .flow-cell.first::before { top: 50%; }
+  .flow-cell.last::before { bottom: 50%; }
+  .flow-cell.gap::before { background: repeating-linear-gradient(180deg, #cbd5e1 0 3px, transparent 3px 7px); }
+  .flow-node { position: relative; z-index: 1; width: 100%; margin: 3px 0; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 9px 3px; background: #fff; border: 1.5px solid #e5e7eb; border-radius: 10px; --tone: #cbd5e1; transition: border-color .45s, box-shadow .45s, background .45s; }
+  .flow-node.on { border-color: var(--tone); background: color-mix(in srgb, var(--tone) 10%, white); box-shadow: 0 0 0 3px color-mix(in srgb, var(--tone) 20%, transparent); }
+  .flow-node.err { border-style: dashed; }
+  .flow-dot { width: 10px; height: 10px; border-radius: 50%; background: #cbd5e1; transition: background .45s, transform .45s; }
+  .flow-node.on .flow-dot { background: var(--tone); transform: scale(1.35); }
+  .flow-label { font-size: 12px; font-weight: 700; color: #334155; line-height: 1.1; text-align: center; }
+  .flow-time { font-size: 10px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--tone); line-height: 1; min-height: 10px; }
+  .flow-log { margin-top: 12px; font: 11px ui-monospace, Menlo, monospace; color: #64748b; min-height: 13px; white-space: pre-wrap; word-break: break-word; }
+</style>
+
+<script type="module" src="/sheet.mjs"></script>

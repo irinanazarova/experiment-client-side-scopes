@@ -1,0 +1,11 @@
+ruby_version: 3.4
+
+ignore:
+  - "bin/**/*"
+  - "db/schema.rb"
+  - "config/**/*"
+  - "wasm_build/**/*"
+  # rbwasm build artifacts (bin/rails wasmify:pack)
+  - "build/**/*"
+  - "rubies/**/*"
+  - "pwa/**/*"

@@ -1,0 +1,36 @@
+# The built app.wasm lands inside the PWA so Vite can serve it at /app.wasm.
+output_dir: pwa/public
+
+# Directories included into the final app.wasm file.
+pack_directories:
+  - app
+  - lib
+  - config
+  - db
+  - public
+
+# Gems skipped during the base module compilation: native extensions that do
+# not compile under the wasi cross-compiler. Where a runtime still needs the
+# library, the default-gem version baked into ruby.wasm serves (json, erb,
+# stringio, prism, date, psych, io-console), or wasmify-rails ships a runtime
+# shim (nokogiri). bigdecimal is deliberately NOT excluded: in Ruby 3.4 it is
+# a bundled gem (nothing baked in to fall back to) and its extension compiles
+# fine under wasi.
+exclude_gems:
+  - nio4r
+  - io-console
+  - psych
+  - date
+  - json       # activesupport dep; its C ext clashes with baked-in headers
+  - stringio   # psych dep
+  - erb        # rdoc dep
+  - irb        # railties dep, console-only, never required in the browser
+  - rdoc       # irb dep
+  - prism      # irb dep; clashes with the parser already inside ruby.wasm
+  - nokogiri   # actiontext/sanitizer dep; wasmify-rails shims it at runtime
+  - racc       # nokogiri dep
+
+# Keep these gems but skip building their native extensions: they fall back
+# to a pure-Ruby implementation.
+ignore_gem_extensions:
+  - websocket-driver # actioncable dep; ships a pure-Ruby driver

@@ -1,0 +1,38 @@
+<% content_for :title, "ActiveRecord in ruby.wasm" %>
+
+<div class="w-full max-w-3xl mx-auto"
+     id="ar-app"
+     data-scope-url="<%= client_scope_path('sheet_cells', sheet_id: @sheet.id) %>"
+     data-sums-sql="<%= @client_queries.column_sums_sql %>"
+     data-grand-total-sql="<%= @client_queries.grand_total_sql %>">
+
+  <header class="mb-6">
+    <h1 class="text-2xl font-bold">Phase B+: real ActiveRecord in the VM</h1>
+    <p class="text-sm text-gray-500">
+      The <code>activerecord</code> gem is packed into ruby.wasm. It runs in this
+      tab, connects through a pure-Ruby <code>PgliteAdapter</code> behind a
+      Wasm-safe threadless connection pool, and runs
+      <code>Cell.where(...).group(:col).sum(:value)</code> against the same
+      PGlite replica. Not a JS port: the real gem, the real model API.
+    </p>
+    <p id="status" class="text-sm mt-1 text-amber-600">Booting…</p>
+  </header>
+
+  <section class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+    <div class="p-4 rounded-lg border bg-white">
+      <h2 class="text-sm font-semibold text-gray-700 mb-2">JS computed (baseline)</h2>
+      <div id="js-result" class="font-mono text-sm text-gray-800">—</div>
+    </div>
+    <div class="p-4 rounded-lg border bg-indigo-50">
+      <h2 class="text-sm font-semibold text-indigo-800 mb-2">ActiveRecord computed (in Wasm)</h2>
+      <div id="ar-result" class="font-mono text-sm text-indigo-900">—</div>
+    </div>
+  </section>
+
+  <section class="p-4 rounded-lg border bg-white">
+    <h2 class="text-sm font-semibold text-gray-700 mb-2">In-VM log</h2>
+    <pre id="ar-log" class="text-xs font-mono whitespace-pre-wrap text-gray-700"></pre>
+  </section>
+</div>
+
+<script type="module" src="/wasm_ar.mjs"></script>

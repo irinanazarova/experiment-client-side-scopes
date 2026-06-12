@@ -1,0 +1,29 @@
+# Host Rails app (first paint + the write authority).
+# Companions: client-side-scopes-db (Postgres, wal_level=logical) and
+# client-side-scopes-electric (the Electric sync service, infra/electric/).
+app = "client-side-scopes"
+primary_region = "dfw"
+
+[build]
+
+[deploy]
+  release_command = "./bin/rails db:prepare"
+
+[env]
+  RAILS_LOG_TO_STDOUT = "true"
+  # The Electric proxy holds a thread per live long-poll (~20s each).
+  RAILS_MAX_THREADS = "10"
+  # Thrust binds this port; 8080 so the non-root container user can bind it.
+  HTTP_PORT = "8080"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+[[vm]]
+  memory = "512mb"
+  cpu_kind = "shared"
+  cpus = 1

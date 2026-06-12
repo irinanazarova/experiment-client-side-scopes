@@ -1,0 +1,19 @@
+# Keep the image lean: none of the wasm toolchain or PWA belongs in the
+# host Rails image (the PWA build is copied into public/ explicitly when
+# serving the slice from this app).
+build/
+rubies/
+dist/
+wasm_build/
+pwa/node_modules/
+pwa/public/app.wasm
+pwa/dist/
+infra/slice/dist/
+tmp/
+log/
+.git/
+.gstack/
+.ruby-lsp/
+.claude/
+config/master.key
+docker-compose.yml

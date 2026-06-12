@@ -1,0 +1,33 @@
+# Points at the Postgres in docker-compose.yml (port 54321), the same database
+# Electric tails via logical replication.
+default: &default
+  adapter: postgresql
+  encoding: unicode
+  host: 127.0.0.1
+  port: 54321
+  username: postgres
+  password: postgres
+  max_connections: <%= ENV.fetch("RAILS_MAX_THREADS") { 5 } %>
+
+development:
+  <<: *default
+  database: client_side_scopes_development
+
+test:
+  <<: *default
+  database: client_side_scopes_test
+
+production:
+  <<: *default
+  database: client_side_scopes_production
+  username: client_side_scopes
+  password: <%= ENV["CLIENT_SIDE_SCOPES_DATABASE_PASSWORD"] %>
+# In-browser runtime. The adapter comes from the JS side (initRailsVM passes
+# "pglite" via ENV); nulldb is the default so the wasmtime-based smoke check
+# (wasmify:pack:core:verify), which has no JS bridge, still boots.
+# js_interface names the JS object (registered by the PWA's database.js) the
+# PGlite adapter queries through; it is ignored by nulldb.
+wasm:
+  adapter: <%= ENV.fetch("ACTIVE_RECORD_ADAPTER") { "nulldb" } %>
+  database: cells_wasm
+  js_interface: pglite4rails

@@ -1,0 +1,13 @@
+<%# Inner content of the :rows live region (watches the visible-window query):
+    the rendered rows, each with its computed Max. Fires only when a cell in
+    the window changes, an edit outside rows 1..row_limit leaves it untouched. %>
+<% (1..row_limit).each do |row| %>
+  <% row_values = values[row] || {} %>
+  <tr>
+    <td class="ss-rownum"><%= row %></td>
+    <td class="ss-rowmax"><%= cell_number(row_values.values.compact.max) %></td>
+    <% (1..sheet.col_count).each do |col| %>
+      <td class="ss-cell grid-cell" data-row="<%= row %>" data-col="<%= col %>"><%= cell_number(row_values[col]) %></td>
+    <% end %>
+  </tr>
+<% end %>

@@ -1,0 +1,21 @@
+# The public slice: Rails-in-the-browser. Caddy serves the built PWA and
+# proxies API paths to the host Rails (client-side-scopes). The actual Rails
+# runs in each visitor's tab (app.wasm in a service worker); this app only
+# ships the bundle and forwards the few server calls.
+app = "client-side-scopes-slice"
+primary_region = "dfw"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+[[vm]]
+  memory = "512mb"
+  cpu_kind = "shared"
+  cpus = 1

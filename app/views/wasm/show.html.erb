@@ -1,0 +1,42 @@
+<% content_for :title, "ruby.wasm bridge — client-side scopes" %>
+
+<div class="w-full max-w-3xl mx-auto"
+     id="wasm-app"
+     data-scope-url="<%= client_scope_path('sheet_cells', sheet_id: @sheet.id) %>"
+     data-grand-total-sql="<%= @client_queries.grand_total_sql %>"
+     data-sums-sql="<%= @client_queries.column_sums_sql %>">
+
+  <header class="mb-6">
+    <h1 class="text-2xl font-bold">Phase B: Ruby in the browser</h1>
+    <p class="text-sm text-gray-500">
+      ruby.wasm runs real CRuby in this tab. It queries the same PGlite replica
+      through a <code>Pglite::Connection</code> seam (the shape of the future
+      Active Record adapter) and computes the aggregate in Ruby.
+    </p>
+    <p id="status" class="text-sm mt-1 text-amber-600">Booting…</p>
+  </header>
+
+  <section class="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <div class="p-4 rounded-lg border bg-white">
+      <h2 class="text-sm font-semibold text-gray-700 mb-2">JS computed (baseline)</h2>
+      <div id="js-result" class="font-mono text-sm text-gray-800">—</div>
+    </div>
+    <div class="p-4 rounded-lg border bg-indigo-50">
+      <h2 class="text-sm font-semibold text-indigo-800 mb-2">Ruby computed (ruby.wasm → PGlite)</h2>
+      <div id="ruby-result" class="font-mono text-sm text-indigo-900">—</div>
+    </div>
+  </section>
+
+  <section class="mt-4 p-4 rounded-lg border bg-white">
+    <h2 class="text-sm font-semibold text-gray-700 mb-2">Ruby stdout</h2>
+    <pre id="ruby-log" class="text-xs font-mono whitespace-pre-wrap text-gray-700"></pre>
+  </section>
+
+  <p class="mt-4 text-xs text-gray-400">
+    Match between the two panels means: the same local Postgres slice is
+    queryable from Ruby running in the browser. That is the bridge the full
+    Active Record → PGlite adapter sits on.
+  </p>
+</div>
+
+<script type="module" src="/wasm.mjs"></script>

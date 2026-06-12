@@ -1,0 +1,9 @@
+<%# Inner content of the :totals live region (watches column_sums_sql): the Σ
+    row, with the grand max under the Max column. %>
+<tr class="ss-totals">
+  <td class="ss-corner">Σ</td>
+  <td class="ss-rowmax"><%= cell_number(stats.max) %></td>
+  <% (1..sheet.col_count).each do |col| %>
+    <td><%= cell_number(sums[col]) %></td>
+  <% end %>
+</tr>

@@ -1,0 +1,23 @@
+# The Electric sync service: reads the Postgres WAL and serves Shapes over
+# HTTP to browsers. ELECTRIC_INSECURE is the documented POC trade-off
+# (docs/architecture.md, "Hardening before production"): production must
+# proxy/sign shape requests through Rails.
+app = "client-side-scopes-electric"
+primary_region = "dfw"
+
+[build]
+  image = "electricsql/electric:latest"
+
+[http_service]
+  internal_port = 3000
+  # Private (flycast-only) service: no public TLS. force_https would make the
+  # Fly proxy reset plain-HTTP flycast traffic from the Rails proxy.
+  force_https = false
+  auto_stop_machines = false   # holds the replication slot; must stay up
+  auto_start_machines = true
+  min_machines_running = 1
+
+[[vm]]
+  memory = "1gb"
+  cpu_kind = "shared"
+  cpus = 1

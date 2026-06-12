@@ -1,0 +1,16 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Rails VM boot diagnostics</title>
+  </head>
+  <body>
+    <h1>Rails VM boot diagnostics (page context, no service worker)</h1>
+    <p>
+      Boots the same PGlite + Electric + app.wasm stack the service worker
+      runs, but in the page, where errors and debug output are visible.
+    </p>
+    <pre id="log" style="font: 12px ui-monospace, monospace; white-space: pre-wrap"></pre>
+    <script type="module" src="/debug.js"></script>
+  </body>
+</html>

@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f8fafc" />
+    <title>Demo budget</title>
+    <style>
+      :root { color-scheme: light; }
+      * { box-sizing: border-box; }
+      html, body { height: 100%; margin: 0; }
+      body {
+        font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        background: #f8fafc;
+        color: #0f172a;
+        display: grid;
+        place-items: center;
+        -webkit-font-smoothing: antialiased;
+      }
+      .loader { text-align: center; padding: 2rem; opacity: 0; animation: fade .5s ease forwards; }
+      @keyframes fade { to { opacity: 1; } }
+      .spinner {
+        width: 42px; height: 42px; margin: 0 auto 1.25rem;
+        border: 3px solid #e2e8f0; border-top-color: #4f46e5;
+        border-radius: 50%;
+        animation: spin .8s linear infinite;
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      .title { font-size: 1.05rem; font-weight: 650; letter-spacing: -0.01em; }
+      .status { margin-top: .4rem; font-size: .85rem; color: #64748b; min-height: 1.2em; }
+      .bar { width: 220px; height: 3px; margin: 1.1rem auto 0; background: #e9edf3; border-radius: 999px; overflow: hidden; }
+      .bar > i { display: block; height: 100%; width: 33%; background: #4f46e5; border-radius: 999px; animation: slide 1.3s ease-in-out infinite; }
+      @keyframes slide { 0% { transform: translateX(-110%); } 100% { transform: translateX(320%); } }
+      .hint { margin-top: 1.6rem; font-size: .72rem; line-height: 1.5; color: #94a3b8; max-width: 22rem; }
+      .status.error { color: #dc2626; }
+      a.diag { position: fixed; bottom: 12px; right: 14px; font-size: .7rem; color: #cbd5e1; text-decoration: none; }
+      a.diag:hover { color: #94a3b8; }
+    </style>
+  </head>
+  <body>
+    <div class="loader">
+      <div class="spinner" id="spinner"></div>
+      <div class="title">Demo budget</div>
+      <div class="status" id="status">Loading…</div>
+      <div class="bar"><i></i></div>
+      <div class="hint" id="hint">
+        Starting a Rails app inside your browser. The first visit downloads it
+        (~125&nbsp;MB); after that it opens instantly.
+      </div>
+    </div>
+    <a class="diag" href="/boot.html">diagnostics</a>
+    <script type="module" src="/loader.js"></script>
+  </body>
+</html>
