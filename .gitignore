@@ -35,6 +35,9 @@
 # (config/credentials.yml.enc IS committed; it is encrypted with this key.)
 /config/master.key
 
+# Transient backups created while slice:pack strips secrets from app.wasm.
+*.nopack
+
 # Node dependencies for the PWA package.
 /node_modules
 /pwa/node_modules

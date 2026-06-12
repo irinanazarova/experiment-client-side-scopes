@@ -47,7 +47,10 @@ module ClientScopable
       ClientScope.register(
         name,
         model: model,
-        columns: ([model.primary_key, reflection.foreign_key] + ship).map(&:to_sym).uniq,
+        # Payload columns + the scoping foreign key (both known without the DB);
+        # the primary key is prepended lazily in Definition#columns so declaring
+        # a scope never connects at boot.
+        payload_columns: ([reflection.foreign_key] + ship).map(&:to_sym).uniq,
         policy_action: authorize,
         relation: relation,
         electric_where: ->(params) { relation.call(params).where_values_hash.symbolize_keys.transform_values { Integer(it) } },

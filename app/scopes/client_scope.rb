@@ -18,12 +18,20 @@ class ClientScope
   class UnknownScope < KeyError; end
 
   Definition = Data.define(
-    :name, :model, :columns, :policy_action,
+    :name, :model, :payload_columns, :policy_action,
     :relation_builder, :electric_where_builder, :subject_builder
   ) do
     def relation(params) = relation_builder.call(params)
     def electric_where(params) = electric_where_builder.call(params)
     def subject(params) = subject_builder.call(params)
+
+    # The full column allow-list shipped to the client: the declared payload
+    # plus the primary key. The key is resolved lazily (here, not at
+    # registration) so declaring a client_scope never opens a database
+    # connection at boot, which would break DB-less boots like wasm packing.
+    def columns
+      ([model.primary_key.to_sym] + payload_columns).uniq
+    end
 
     # The Electric Shape this scope authorizes, derived entirely server-side:
     # the table and column allow-list are declared, the where is the explicit
@@ -41,11 +49,11 @@ class ClientScope
   REGISTRY = {}
   private_constant :REGISTRY
 
-  def self.register(name, model:, columns:, policy_action:, relation:, electric_where:, subject:)
+  def self.register(name, model:, payload_columns:, policy_action:, relation:, electric_where:, subject:)
     key = name.to_sym
     raise ArgumentError, "client scope #{key} already registered" if REGISTRY.key?(key)
 
-    REGISTRY[key] = Definition.new(key, model, columns, policy_action, relation, electric_where, subject)
+    REGISTRY[key] = Definition.new(key, model, payload_columns, policy_action, relation, electric_where, subject)
   end
 
   def self.fetch(name)
