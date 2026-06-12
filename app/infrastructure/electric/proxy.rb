@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "net/http"
+require "openssl"
 
 module Electric
   # Infrastructure layer. The upstream half of the authorizing proxy: takes a
@@ -16,6 +17,14 @@ module Electric
     # Electric long-polls live requests for ~20s; leave headroom.
     OPEN_TIMEOUT = 5
     READ_TIMEOUT = 40
+
+    # Upstream Electric can be briefly unreachable or slow (it restarts and
+    # reconnects its replication periodically). Turn those into a retryable 503
+    # rather than letting them surface as an uncaught 500; pglite-sync re-polls.
+    UPSTREAM_ERRORS = [
+      Net::OpenTimeout, Net::ReadTimeout, IOError, SocketError,
+      SystemCallError, OpenSSL::SSL::SSLError
+    ].freeze
 
     Result = Data.define(:status, :headers, :body)
 
@@ -40,6 +49,9 @@ module Electric
         headers: relay_headers(response),
         body: response.body.to_s
       )
+    rescue *UPSTREAM_ERRORS => e
+      Rails.logger.warn("Electric proxy upstream error: #{e.class}: #{e.message}")
+      Result.new(status: 503, headers: {"content-type" => "text/plain", "retry-after" => "1"}, body: "")
     end
 
     private
