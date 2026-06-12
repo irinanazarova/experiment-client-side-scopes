@@ -24,5 +24,7 @@
     <main class="container mx-auto mt-28 px-5 flex">
       <%= yield %>
     </main>
+    <%# Reviewer support notice + stale-cache reset (soft, dismissible). %>
+    <script type="module" src="/support-banner.mjs"></script>
   </body>
 </html>
