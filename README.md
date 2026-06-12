@@ -1,10 +1,10 @@
 # Client-side scopes (POC)
 
-Let's run an experiment: achieve zero-latency UX on Rails. For true zero latency, we want to have a DB running in the browser, and soo all edits from user are applied first to this replica, rendered in UI (almost instantly, no network), and then propaged to server-side application. Also, updates from server are pushed to local app as authoritative. But does this mean that we have to duplicate a big chunc of Rails application logic in JS/TS for this to run in the browser? Data migrations, validations, domain modelling. Let's try another way: run Rails in the browser - on WebAssembly (via `wasmify-rails`). Sync data from server-side Postgres to our client-side pglite with ElectricSQL: one way sync only - pglite is a read replica of a subset of data (defined by the scope and auth policy). All writes go to local app and then to server-app the normal way (HTTP request to Rails). 
+Let's run an experiment: achieve zero-latency UX on Rails. For true zero latency, we want to have a DB running in the browser, and soo all edits from user are applied first to this replica, rendered in UI (almost instantly, no network), and then propagated to server-side application. Also, updates from server are pushed to local app as authoritative. But does this mean that we have to duplicate a big chunk of Rails application logic in JS/TS for this to run in the browser? Data migrations, validations, domain modelling. Let's try another way: run Rails in the browser - on WebAssembly (via `wasmify-rails`). Sync data from server-side Postgres to our client-side pglite with ElectricSQL: one way sync only - pglite is a read replica of a subset of data (defined by the scope and auth policy). All writes go to local app and then to server-app the normal way (HTTP request to Rails). 
 
 UI is Hotwire and rendered by Rails: local app needs a way of updating the UI upon pglite data updates. We had to "hack" this with "live regions" (an ERB partial bound to the SQL it depends on, re-rendered on a PGlite live-query change).
 
-**The demo:** a 50,000-cell spreadsheet. Yellow-hihghlighting is for edits from our client. Green highlighting is for updates coming from server.
+**The demo:** a 50,000-cell spreadsheet. Yellow-highlighting is for edits from our client. Green highlighting is for updates coming from server.
 
 - **Rails in the browser:** https://client-side-scopes-slice.fly.dev
   A loader installs the in-browser Rails and drops you in. The spreadsheet is
@@ -12,10 +12,10 @@ UI is Hotwire and rendered by Rails: local app needs a way of updating the UI up
 
 Hit **Apply to whole column**: the column and its Σ update in ~15 ms with no
 network, then the write lands on the server (one transaction) and Electric
-reconciles every replica. Hit **Start server activity** to watch changes stream
-in from "other clients" (green = from elsewhere, yellow = your edit).
+reconciles every replica. Hit **Server activity** to watch changes stream
+in from server-side.
 
-Toggle "Server declines updates" to see that scenario too. 
+Toggle **Server rejects writes** to see that scenario too. 
 
 ## What it proves
 
