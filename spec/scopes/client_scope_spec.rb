@@ -20,6 +20,12 @@ RSpec.describe ClientScope do
       expect(definition.columns).to eq(%i[id sheet_id row col value formula])
     end
 
+    it "always includes the primary key and the scoping foreign key" do
+      # The declaration ships only the payload (%i[row col value formula]); id and
+      # sheet_id are added automatically because you cannot replicate without them.
+      expect(definition.columns).to include(:id, :sheet_id)
+    end
+
     it "authorizes against the sheet via the sync? rule" do
       expect(definition.policy_action).to eq(:sync?)
     end

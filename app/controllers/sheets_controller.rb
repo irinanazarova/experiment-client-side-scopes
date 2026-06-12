@@ -5,15 +5,12 @@
 # PGlite replica); after that, the grid and aggregates are read locally in
 # the browser.
 class SheetsController < ApplicationController
-  # The rendered window; a real sheet virtualizes the rest. Matches the server
-  # simulator's tick window (Cells::RandomTick) so every rendered row is "live"
-  # and the rows fragment stays cheap enough for the in-VM ActionView render to
-  # keep up with once-a-second updates.
-  GRID_ROW_LIMIT = 25
-
   def show
     @sheet = Sheet.find(params[:id])
-    @client_queries = Cells::ClientQueries.new(@sheet)
+    # The SQL the browser watches as PGlite live queries (the page bakes these
+    # into data- attributes); each query object pairs it with the server value.
+    @column_aggregates = Cells::ColumnAggregates.new(@sheet)
+    @sheet_stats = Cells::SheetStats.new(@sheet)
     @grid = grid_locals(@sheet)
   end
 
@@ -41,6 +38,6 @@ class SheetsController < ApplicationController
   # _grid is just the shell now; each region partial builds its own data
   # through LiveRegion, so the same render serves first paint and re-render.
   def grid_locals(sheet)
-    {sheet:, row_limit: GRID_ROW_LIMIT}
+    {sheet:, row_limit: Cells::GridWindow::DEFAULT_LIMIT}
   end
 end

@@ -14,13 +14,5 @@ module Cells
       @cols = (col_from..col_to)
       freeze
     end
-
-    def cell_count
-      rows.size * cols.size
-    end
-
-    def cover?(row, col)
-      rows.cover?(row) && cols.cover?(col)
-    end
   end
 end

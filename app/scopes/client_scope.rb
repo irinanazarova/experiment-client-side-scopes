@@ -24,6 +24,18 @@ class ClientScope
     def relation(params) = relation_builder.call(params)
     def electric_where(params) = electric_where_builder.call(params)
     def subject(params) = subject_builder.call(params)
+
+    # The Electric Shape this scope authorizes, derived entirely server-side:
+    # the table and column allow-list are declared, the where is the explicit
+    # trust-boundary filter. Every endpoint that issues a shape goes through
+    # here, so what the client may replicate is defined in exactly one place.
+    def shape_definition(params)
+      Electric::ShapeDefinition.new(
+        table: model.table_name,
+        columns: columns,
+        where: electric_where(params)
+      )
+    end
   end
 
   REGISTRY = {}

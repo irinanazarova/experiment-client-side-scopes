@@ -3,8 +3,8 @@
 <div class="w-full max-w-3xl mx-auto"
      id="ar-app"
      data-scope-url="<%= client_scope_path('sheet_cells', sheet_id: @sheet.id) %>"
-     data-sums-sql="<%= @client_queries.column_sums_sql %>"
-     data-grand-total-sql="<%= @client_queries.grand_total_sql %>">
+     data-sums-sql="<%= @column_aggregates.sums_sql %>"
+     data-grand-total-sql="<%= @column_aggregates.total_sql %>">
 
   <header class="mb-6">
     <h1 class="text-2xl font-bold">Phase B+: real ActiveRecord in the VM</h1>

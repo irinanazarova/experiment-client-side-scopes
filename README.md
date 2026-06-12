@@ -12,6 +12,64 @@ authoritative and other clients converge on their own.
 See [`docs/architecture.md`](docs/architecture.md) for the architecture and the
 layered design. This README is how to run it and verify it.
 
+## Where things live (a map for reviewers)
+
+There are **two distinct "slices"** in this project; here is exactly where each
+is defined.
+
+### 1. The data slice, the client-side *scope* (which rows/columns reach the browser)
+
+This is the named scope the project is about: a client subscribes by **name**,
+never by an arbitrary query, and the Electric filter is *derived* from a real
+server-side Active Record scope so the two cannot drift.
+
+| Concern | File |
+|---|---|
+| The declaration (start here) | [`app/models/cell.rb`](app/models/cell.rb) — `client_scope :sheet_cells, ->(sheet_id) { for_sheet(sheet_id) }, ship: %i[row col value formula]` |
+| The macro that derives the rest | [`app/models/concerns/client_scopable.rb`](app/models/concerns/client_scopable.rb) |
+| The registry + the single shape-building seam | [`app/scopes/client_scope.rb`](app/scopes/client_scope.rb) (`Definition#shape_definition`) |
+| The Electric Shape filter it renders | [`app/infrastructure/electric/shape_definition.rb`](app/infrastructure/electric/shape_definition.rb) |
+| Who is allowed to subscribe | [`app/policies/sheet_policy.rb`](app/policies/sheet_policy.rb) (`sync?`) |
+
+The declaration reads like a `scope` plus one security rider. **`ship:` (the
+payload columns) is the only explicit choice** — it's the data that leaves the
+server, the reviewable trust surface. Everything else is derived from the scope:
+the params (the lambda's own arguments), the `where` (read back from the
+relation, so it can't drift), the policy subject (`:sheet`, from the `sheet_id`
+filter), the authorization rule (`:sync?`, with a boot-time failure if it's
+missing), and the primary key + foreign key (always shipped, since you can't
+replicate without them).
+
+### 2. The code slice, the part of *Rails* that runs in Wasm (what gets packed into `app.wasm`)
+
+| Concern | File |
+|---|---|
+| Which app dirs + which gems compile into `app.wasm` | [`config/wasmify.yml`](config/wasmify.yml) — `pack_directories`, `exclude_gems` |
+| Which gems are in the in-browser bundle | [`Gemfile`](Gemfile) — the `group: [:default, :wasm]` / `group :wasm` markers |
+| The service worker that boots the packed Rails in the tab | [`pwa/rails.sw.js`](pwa/rails.sw.js) |
+| The in-browser DB the packed Rails reads | PGlite, synced by Electric (see slice notes below) |
+
+### The rest of `app/`, by layer
+
+```
+app/
+  models/            Cell, Sheet, Cells::Region/Transform (value objects)   ← Domain
+  queries/cells/     ColumnAggregates, SheetStats, GridWindow (server value + client SQL, paired)
+  scopes/            ClientScope registry                                    ← Application
+  live_regions/      LiveRegion (named reactive view fragments)
+  services/cells/    BulkUpdate (the write authority), RandomTick
+  policies/          SheetPolicy
+  infrastructure/    electric/* (Shape, Gateway, Proxy, Config), wasm/HeapReclaimer  ← Infrastructure
+  controllers/       thin; params → value objects, authorize, delegate       ← Presentation
+  views/sheets/      _grid, _rows, _stats, _totals partials (one set, host + slice)
+public/*.mjs         the browser loop (sheet/wasm/wasm_ar/live/flow/blink), baked into app.wasm
+```
+
+The three run modes: **standalone** (`/sheets/1`, server Rails + browser
+PGlite), **the bridge** (`/wasm`, `/wasm_ar`, ruby.wasm + in-VM ActiveRecord),
+and **the slice** (`pwa/`, the whole app packed into `app.wasm`, served from a
+service worker). The same `app/` serves all three.
+
 ## Prerequisites
 
 - Ruby 3.4.x, Rails 8.1 (already set up here)
@@ -168,21 +226,6 @@ into the in-VM Rails first, so `Cells::BulkUpdate` runs locally against the
 replica, then forwards it to host Rails, the write authority, as one
 transaction. Electric reconciles onto the authoritative rows; a rejected
 write (422) restores the snapshot and the replica never diverges.
-
-## How it maps to the code (layered)
-
-- **Domain**: `Cell`, `Sheet`, `Cells::Region` / `Cells::Transform` (value
-  objects), `Cells::ColumnAggregates` (executed query object),
-  `Cells::ClientQueries` (the SQL the browser runs).
-- **Application**: `Cells::BulkUpdate` (the write authority, self-authorizing via
-  Action Policy), `SheetPolicy`, `ClientScopable` (the `client_scope` model
-  macro) backed by the `ClientScope` registry, and `LiveRegion` (named
-  reactive view fragments bound to a watch query).
-- **Infrastructure**: `Electric::ShapeDefinition`, `Electric::Gateway`,
-  `Electric::Proxy` (the signed upstream call behind the authorizing proxy),
-  `Electric::Config` (anyway_config).
-- **Presentation**: thin controllers; `public/sheet.mjs` (browser loop),
-  `public/wasm.mjs` (ruby.wasm bridge), `public/wasm_ar.mjs` (ActiveRecord in Wasm).
 
 ## Tests
 
