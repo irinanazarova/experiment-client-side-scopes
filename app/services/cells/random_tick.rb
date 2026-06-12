@@ -14,6 +14,10 @@ module Cells
     VISIBLE_COLS = (1..10)
     SECTION_HEIGHT = 5
 
+    # user: nil means the system actor (the simulator), not "the current user".
+    # It passes today because SheetPolicy#update? is a permissive stub; when
+    # real auth lands, give the simulator an explicit system principal rather
+    # than letting nil read as anonymous.
     def initialize(sheet, rows: VISIBLE_ROWS, cols: VISIBLE_COLS, user: nil)
       @sheet = sheet
       @rows = rows

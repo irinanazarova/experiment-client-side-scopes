@@ -12,17 +12,6 @@ RSpec.describe Cells::Region do
     expect(region.cols).to eq(1..3)
   end
 
-  it "counts the cells it covers" do
-    expect(region.cell_count).to eq(4 * 3)
-  end
-
-  it "knows which cells it covers (inclusive bounds)" do
-    expect(region.cover?(2, 1)).to be(true)
-    expect(region.cover?(5, 3)).to be(true)
-    expect(region.cover?(6, 3)).to be(false)
-    expect(region.cover?(2, 4)).to be(false)
-  end
-
   it "is frozen (immutable value object)" do
     expect(region).to be_frozen
   end

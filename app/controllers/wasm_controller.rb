@@ -6,12 +6,12 @@
 class WasmController < ApplicationController
   def show
     @sheet = Sheet.first
-    @client_queries = Cells::ClientQueries.new(@sheet)
+    @column_aggregates = Cells::ColumnAggregates.new(@sheet)
   end
 
   # Real activerecord packed in ruby.wasm, executing against PGlite.
   def ar
     @sheet = Sheet.first
-    @client_queries = Cells::ClientQueries.new(@sheet)
+    @column_aggregates = Cells::ColumnAggregates.new(@sheet)
   end
 end

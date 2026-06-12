@@ -11,9 +11,9 @@
      data-row-count="<%= @sheet.row_count %>"
      data-col-count="<%= @sheet.col_count %>"
      data-row-limit="<%= @grid[:row_limit] %>"
-     data-sums-sql="<%= @client_queries.column_sums_sql %>"
-     data-grand-total-sql="<%= @client_queries.grand_total_sql %>"
-     data-stats-sql="<%= @client_queries.stats_sql %>">
+     data-sums-sql="<%= @column_aggregates.sums_sql %>"
+     data-grand-total-sql="<%= @column_aggregates.total_sql %>"
+     data-stats-sql="<%= @sheet_stats.sql %>">
 
   <div class="lg:flex lg:gap-6 lg:items-start">
   <div class="lg:flex-1 lg:min-w-0">

@@ -34,12 +34,12 @@ class LiveRegion
   # window resettles the aggregates without repainting the grid body.
   register :stats,
     partial: "sheets/stats",
-    watch: ->(sheet) { Cells::ClientQueries.new(sheet).stats_sql },
+    watch: ->(sheet) { Cells::SheetStats.new(sheet).sql },
     locals: ->(sheet) { {stats: Cells::SheetStats.new(sheet).compute} }
 
   register :totals,
     partial: "sheets/totals",
-    watch: ->(sheet) { Cells::ClientQueries.new(sheet).column_sums_sql },
+    watch: ->(sheet) { Cells::ColumnAggregates.new(sheet).sums_sql },
     locals: ->(sheet) {
       {
         sheet: sheet,
@@ -50,12 +50,12 @@ class LiveRegion
 
   register :rows,
     partial: "sheets/rows",
-    watch: ->(sheet) { Cells::GridWindow.new(sheet, SheetsController::GRID_ROW_LIMIT).sql },
+    watch: ->(sheet) { Cells::GridWindow.new(sheet).sql },
     locals: ->(sheet) {
       {
         sheet: sheet,
-        row_limit: SheetsController::GRID_ROW_LIMIT,
-        values: Cells::GridWindow.new(sheet, SheetsController::GRID_ROW_LIMIT).values
+        row_limit: Cells::GridWindow::DEFAULT_LIMIT,
+        values: Cells::GridWindow.new(sheet).values
       }
     }
 end

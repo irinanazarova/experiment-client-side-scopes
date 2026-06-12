@@ -8,7 +8,13 @@ module Cells
   #             changing is exactly when the visible grid is stale)
   #   - #values the same rows shaped for rendering ({row => {col => value}})
   class GridWindow
-    def initialize(sheet, limit)
+    # The rendered window; a real sheet virtualizes the rest. Matches the
+    # server simulator's tick window (Cells::RandomTick) so every rendered row
+    # is "live", and keeps the rows fragment cheap enough for the in-VM
+    # ActionView render to keep up with once-a-second updates.
+    DEFAULT_LIMIT = 25
+
+    def initialize(sheet, limit = DEFAULT_LIMIT)
       @sheet = sheet
       @limit = limit
     end
