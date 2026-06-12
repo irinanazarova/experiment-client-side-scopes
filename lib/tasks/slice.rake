@@ -30,13 +30,18 @@ namespace :slice do
 
     wasm = Rails.root.join("pwa/public/app.wasm")
 
-    # Drop the ~19 MB of debug sections (DWARF/name) that rbwasm's `full` profile
-    # leaves in the module. wasm-strip removes custom sections only, with no
-    # re-serialization of code/data, so it cannot change runtime behavior.
+    # rbwasm's `full` profile leaves big debug/name custom sections in the
+    # module (~19 MB). wasm-strip drops every custom section with no
+    # re-serialization of the code or data segments, so it cannot change
+    # runtime behavior. Skipped (with a warning) when wabt isn't installed.
+    mb = ->(bytes) { (bytes / 1_048_576.0).round(1) }
     if wasm.exist? && system("which wasm-strip > /dev/null 2>&1")
       before = wasm.size
-      system("wasm-strip", wasm.to_s)
-      puts "slice:pack stripped debug sections: #{before / 1_048_576} MB -> #{wasm.size / 1_048_576} MB"
+      if system("wasm-strip", wasm.to_s)
+        puts "slice:pack stripped custom sections: #{mb.(before)} MB -> #{mb.(wasm.size)} MB"
+      else
+        warn "slice:pack: wasm-strip failed (exit #{$?.exitstatus}) — shipping unstripped app.wasm"
+      end
     else
       warn "slice:pack: wasm-strip not found (brew install wabt) — app.wasm ships ~19 MB larger"
     end

@@ -5,23 +5,12 @@
 import { PGlite } from "https://cdn.jsdelivr.net/npm/@electric-sql/pglite@0.4.6/dist/index.js";
 import { electricSync } from "https://cdn.jsdelivr.net/npm/@electric-sql/pglite-sync@0.5.6/+esm";
 import { DefaultRubyVM } from "https://cdn.jsdelivr.net/npm/@ruby/wasm-wasi@2.7.1/dist/browser/+esm";
+import { fmt, setStatus, silenceAbortRejections, grandTotalReader, withinEnvelope } from "./wasm-demo-common.mjs";
 
 const app = document.getElementById("wasm-app");
 const cfg = app.dataset;
-const setStatus = (m, c = "text-gray-500") => {
-  const el = document.getElementById("status");
-  el.textContent = m;
-  el.className = `text-sm mt-1 ${c}`;
-};
-const fmt = (n) => Number(n).toLocaleString(undefined, { maximumFractionDigits: 2 });
 
-// Electric's shape sync long-polls in the background; when it's torn down the
-// in-flight fetch aborts and surfaces as an unhandled rejection. Harmless
-// teardown noise, so swallow just the abort case.
-addEventListener("unhandledrejection", (event) => {
-  const reason = String(event.reason?.message ?? event.reason ?? "");
-  if (/abort/i.test(reason)) event.preventDefault();
-});
+silenceAbortRejections();
 
 // The Ruby program. Note: hand SQL to PGlite, await the JS promise across the
 // bridge, marshal rows to Ruby via JSON. exec_query is exactly the method an
@@ -93,10 +82,7 @@ async function boot() {
     shapeKey: "cells",
   });
 
-  // The replica stays live (Electric keeps streaming; the server simulator
-  // ticks ~once a second), so always read the JS grand total fresh.
-  const jsGrandTotal = async () =>
-    Number((await pg.query(cfg.grandTotalSql)).rows[0]?.total ?? 0);
+  const jsGrandTotal = grandTotalReader(pg, cfg.grandTotalSql);
 
   // Wait until the initial sync has delivered rows before bothering to compare.
   let jsTotal = 0;
@@ -116,20 +102,15 @@ async function boot() {
   );
   const { vm } = await DefaultRubyVM(mod, { args: ["ruby.wasm", "-EUTF-8", "-e_=0", "-W0"] });
 
-  // Booting is the slow part, so do it before sampling. Then bracket the Ruby
-  // read between two JS reads: if Ruby lands inside that envelope, both engines
-  // saw the same replica and any delta is just a simulator tick that arrived
-  // between the reads, not a bridge bug. (The old code read JS seconds before
-  // Ruby, so a few ticks always made them disagree.)
+  // Sample JS, run Ruby, sample JS again; see withinEnvelope for why bracketing
+  // the Ruby read distinguishes a real bridge bug from a mid-run simulator tick.
   setStatus("Running Ruby against the local replica…", "text-amber-600");
   const jsBefore = await jsGrandTotal();
   const rubyTotal = Number((await vm.evalAsync(RUBY)).toString());
   const jsAfter = await jsGrandTotal();
   document.getElementById("js-result").textContent = `Σ all cells (computed in JS): ${fmt(jsAfter)}`;
 
-  const lo = Math.min(jsBefore, jsAfter) - 0.01;
-  const hi = Math.max(jsBefore, jsAfter) + 0.01;
-  const match = rubyTotal >= lo && rubyTotal <= hi;
+  const { lo, hi, match } = withinEnvelope(jsBefore, jsAfter, rubyTotal);
   setStatus(
     match
       ? "Bridge proven: Ruby in the browser queried the local PGlite replica and matched JS."

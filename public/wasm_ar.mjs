@@ -6,23 +6,12 @@ import { electricSync } from "https://cdn.jsdelivr.net/npm/@electric-sql/pglite-
 // Must match the ruby_wasm gem (2.9.4) that built ruby-app.wasm, or the JS glue
 // and the packed `js` gem disagree (FinalizationRegistry error).
 import { DefaultRubyVM } from "https://cdn.jsdelivr.net/npm/@ruby/wasm-wasi@2.9.4-2026-05-29-a/dist/browser/+esm";
+import { fmt, setStatus, silenceAbortRejections, grandTotalReader, withinEnvelope } from "./wasm-demo-common.mjs";
 
 const app = document.getElementById("ar-app");
 const cfg = app.dataset;
-const setStatus = (m, c = "text-gray-500") => {
-  const el = document.getElementById("status");
-  el.textContent = m;
-  el.className = `text-sm mt-1 ${c}`;
-};
-const fmt = (n) => Number(n).toLocaleString(undefined, { maximumFractionDigits: 2 });
 
-// Electric's shape sync long-polls in the background; when it's torn down the
-// in-flight fetch aborts and surfaces as an unhandled rejection. Harmless
-// teardown noise, so swallow just the abort case.
-addEventListener("unhandledrejection", (event) => {
-  const reason = String(event.reason?.message ?? event.reason ?? "");
-  if (/abort/i.test(reason)) event.preventDefault();
-});
+silenceAbortRejections();
 
 // Staged so we can see exactly how far the real gem gets in the VM. Each stage
 // logs; failures are caught and reported rather than aborting the whole run.
@@ -258,8 +247,7 @@ async function boot() {
     shapeKey: "cells",
   });
 
-  const jsGrandTotal = async () =>
-    Number((await pg.query(cfg.grandTotalSql)).rows[0]?.total ?? 0);
+  const jsGrandTotal = grandTotalReader(pg, cfg.grandTotalSql);
 
   // Wait until the initial sync has delivered rows before comparing.
   let jsTotal = 0;
@@ -275,19 +263,15 @@ async function boot() {
   const mod = await WebAssembly.compile(await (await fetch("/ruby-app.wasm")).arrayBuffer());
   const { vm } = await DefaultRubyVM(mod, { args: ["ruby.wasm", "-EUTF-8", "-e_=0", "-W0"] });
 
-  // The replica stays live (Electric streams; the server simulator ticks ~1/s),
-  // so bracket the AR read between two JS reads. If the AR total lands inside
-  // that envelope, both queried the same replica and any delta is a tick that
-  // arrived between reads, not an adapter bug.
+  // Sample JS, run AR, sample JS again; see withinEnvelope for why bracketing
+  // the AR read distinguishes a real adapter bug from a mid-run simulator tick.
   setStatus("Running ActiveRecord in the VM…", "text-amber-600");
   const jsBefore = await jsGrandTotal();
   const arTotal = Number((await vm.evalAsync(RUBY)).toString());
   const jsAfter = await jsGrandTotal();
   document.getElementById("js-result").textContent = `Σ all cells (computed in JS): ${fmt(jsAfter)}`;
 
-  const lo = Math.min(jsBefore, jsAfter) - 0.01;
-  const hi = Math.max(jsBefore, jsAfter) + 0.01;
-  const match = arTotal >= lo && arTotal <= hi;
+  const { lo, hi, match } = withinEnvelope(jsBefore, jsAfter, arTotal);
   setStatus(
     match
       ? "Real ActiveRecord executed in the browser against PGlite and matched JS."
