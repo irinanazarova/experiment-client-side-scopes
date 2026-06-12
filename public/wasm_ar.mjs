@@ -6,15 +6,12 @@ import { electricSync } from "https://cdn.jsdelivr.net/npm/@electric-sql/pglite-
 // Must match the ruby_wasm gem (2.9.4) that built ruby-app.wasm, or the JS glue
 // and the packed `js` gem disagree (FinalizationRegistry error).
 import { DefaultRubyVM } from "https://cdn.jsdelivr.net/npm/@ruby/wasm-wasi@2.9.4-2026-05-29-a/dist/browser/+esm";
+import { fmt, setStatus, silenceAbortRejections, grandTotalReader, withinEnvelope } from "./wasm-demo-common.mjs";
 
 const app = document.getElementById("ar-app");
 const cfg = app.dataset;
-const setStatus = (m, c = "text-gray-500") => {
-  const el = document.getElementById("status");
-  el.textContent = m;
-  el.className = `text-sm mt-1 ${c}`;
-};
-const fmt = (n) => Number(n).toLocaleString(undefined, { maximumFractionDigits: 2 });
+
+silenceAbortRejections();
 
 // Staged so we can see exactly how far the real gem gets in the VM. Each stage
 // logs; failures are caught and reported rather than aborting the whole run.
@@ -250,10 +247,12 @@ async function boot() {
     shapeKey: "cells",
   });
 
+  const jsGrandTotal = grandTotalReader(pg, cfg.grandTotalSql);
+
+  // Wait until the initial sync has delivered rows before comparing.
   let jsTotal = 0;
   for (let i = 0; i < 40; i++) {
-    const r = await pg.query(cfg.grandTotalSql);
-    jsTotal = Number(r.rows[0]?.total ?? 0);
+    jsTotal = await jsGrandTotal();
     if (jsTotal > 0) break;
     await new Promise((res) => setTimeout(res, 150));
   }
@@ -262,20 +261,21 @@ async function boot() {
   globalThis.pglite = pg;
   setStatus("Downloading ruby.wasm with activerecord packed (large)…", "text-amber-600");
   const mod = await WebAssembly.compile(await (await fetch("/ruby-app.wasm")).arrayBuffer());
-  const { vm } = await DefaultRubyVM(mod);
+  const { vm } = await DefaultRubyVM(mod, { args: ["ruby.wasm", "-EUTF-8", "-e_=0", "-W0"] });
 
+  // Sample JS, run AR, sample JS again; see withinEnvelope for why bracketing
+  // the AR read distinguishes a real adapter bug from a mid-run simulator tick.
   setStatus("Running ActiveRecord in the VM…", "text-amber-600");
-  const result = await vm.evalAsync(RUBY);
-  const arTotal = Number(result.toString());
+  const jsBefore = await jsGrandTotal();
+  const arTotal = Number((await vm.evalAsync(RUBY)).toString());
+  const jsAfter = await jsGrandTotal();
+  document.getElementById("js-result").textContent = `Σ all cells (computed in JS): ${fmt(jsAfter)}`;
 
-  // Re-read the JS baseline now that the replica has fully settled.
-  jsTotal = Number((await pg.query(cfg.grandTotalSql)).rows[0]?.total ?? jsTotal);
-  document.getElementById("js-result").textContent = `Σ all cells (computed in JS): ${fmt(jsTotal)}`;
-  const match = Math.abs(arTotal - jsTotal) < 0.01;
+  const { lo, hi, match } = withinEnvelope(jsBefore, jsAfter, arTotal);
   setStatus(
     match
       ? "Real ActiveRecord executed in the browser against PGlite and matched JS."
-      : `ActiveRecord ran. total=${arTotal} js=${jsTotal} (see log)`,
+      : `ActiveRecord ran. total=${fmt(arTotal)} vs JS envelope [${fmt(lo)}, ${fmt(hi)}] (see log)`,
     match ? "text-green-600" : "text-amber-700"
   );
 }

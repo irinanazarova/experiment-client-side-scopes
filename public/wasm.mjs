@@ -5,15 +5,12 @@
 import { PGlite } from "https://cdn.jsdelivr.net/npm/@electric-sql/pglite@0.4.6/dist/index.js";
 import { electricSync } from "https://cdn.jsdelivr.net/npm/@electric-sql/pglite-sync@0.5.6/+esm";
 import { DefaultRubyVM } from "https://cdn.jsdelivr.net/npm/@ruby/wasm-wasi@2.7.1/dist/browser/+esm";
+import { fmt, setStatus, silenceAbortRejections, grandTotalReader, withinEnvelope } from "./wasm-demo-common.mjs";
 
 const app = document.getElementById("wasm-app");
 const cfg = app.dataset;
-const setStatus = (m, c = "text-gray-500") => {
-  const el = document.getElementById("status");
-  el.textContent = m;
-  el.className = `text-sm mt-1 ${c}`;
-};
-const fmt = (n) => Number(n).toLocaleString(undefined, { maximumFractionDigits: 2 });
+
+silenceAbortRejections();
 
 // The Ruby program. Note: hand SQL to PGlite, await the JS promise across the
 // bridge, marshal rows to Ruby via JSON. exec_query is exactly the method an
@@ -85,33 +82,39 @@ async function boot() {
     shapeKey: "cells",
   });
 
-  // Wait until rows have landed, then show the JS baseline.
+  const jsGrandTotal = grandTotalReader(pg, cfg.grandTotalSql);
+
+  // Wait until the initial sync has delivered rows before bothering to compare.
   let jsTotal = 0;
   for (let i = 0; i < 40; i++) {
-    const r = await pg.query(cfg.grandTotalSql);
-    jsTotal = Number(r.rows[0]?.total ?? 0);
+    jsTotal = await jsGrandTotal();
     if (jsTotal > 0) break;
     await new Promise((res) => setTimeout(res, 150));
   }
   document.getElementById("js-result").textContent = `Σ all cells (computed in JS): ${fmt(jsTotal)}`;
 
-  // Expose the replica to the Ruby VM and boot ruby.wasm.
+  // Expose the replica to the Ruby VM and boot ruby.wasm. -W0 quiets CRuby's
+  // boot-time warnings, matching how the slice VM is launched.
   globalThis.pglite = pg;
   setStatus("Downloading + booting ruby.wasm (CRuby)…", "text-amber-600");
   const mod = await WebAssembly.compile(
     await (await fetch("https://cdn.jsdelivr.net/npm/@ruby/3.4-wasm-wasi@2.7.1/dist/ruby.wasm")).arrayBuffer()
   );
-  const { vm } = await DefaultRubyVM(mod);
+  const { vm } = await DefaultRubyVM(mod, { args: ["ruby.wasm", "-EUTF-8", "-e_=0", "-W0"] });
 
+  // Sample JS, run Ruby, sample JS again; see withinEnvelope for why bracketing
+  // the Ruby read distinguishes a real bridge bug from a mid-run simulator tick.
   setStatus("Running Ruby against the local replica…", "text-amber-600");
-  const result = await vm.evalAsync(RUBY);
-  const rubyTotal = Number(result.toString());
+  const jsBefore = await jsGrandTotal();
+  const rubyTotal = Number((await vm.evalAsync(RUBY)).toString());
+  const jsAfter = await jsGrandTotal();
+  document.getElementById("js-result").textContent = `Σ all cells (computed in JS): ${fmt(jsAfter)}`;
 
-  const match = Math.abs(rubyTotal - jsTotal) < 0.01;
+  const { lo, hi, match } = withinEnvelope(jsBefore, jsAfter, rubyTotal);
   setStatus(
     match
       ? "Bridge proven: Ruby in the browser queried the local PGlite replica and matched JS."
-      : `Mismatch: ruby=${rubyTotal} js=${jsTotal}`,
+      : `Mismatch: ruby=${fmt(rubyTotal)} outside JS envelope [${fmt(lo)}, ${fmt(hi)}]`,
     match ? "text-green-600" : "text-red-600"
   );
 }
