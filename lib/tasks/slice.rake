@@ -28,10 +28,22 @@ namespace :slice do
       stashed.each { |path, backup| FileUtils.mv(backup, path) if backup.exist? }
     end
 
+    wasm = Rails.root.join("pwa/public/app.wasm")
+
+    # Drop the ~19 MB of debug sections (DWARF/name) that rbwasm's `full` profile
+    # leaves in the module. wasm-strip removes custom sections only, with no
+    # re-serialization of code/data, so it cannot change runtime behavior.
+    if wasm.exist? && system("which wasm-strip > /dev/null 2>&1")
+      before = wasm.size
+      system("wasm-strip", wasm.to_s)
+      puts "slice:pack stripped debug sections: #{before / 1_048_576} MB -> #{wasm.size / 1_048_576} MB"
+    else
+      warn "slice:pack: wasm-strip not found (brew install wabt) — app.wasm ships ~19 MB larger"
+    end
+
     # Safety net: prove the secret is not in the shipped artifact. grep runs in
     # this process (no secret is printed); a match aborts the build.
     key = Rails.root.join("config/master.key")
-    wasm = Rails.root.join("pwa/public/app.wasm")
     if key.exist? && wasm.exist? && system("grep", "-aqf", key.to_s, wasm.to_s)
       raise "SECURITY: master key bytes found in #{wasm} — refusing to ship."
     end
