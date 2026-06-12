@@ -25,15 +25,20 @@ server-side Active Record scope so the two cannot drift.
 
 | Concern | File |
 |---|---|
-| The declaration (start here) | [`app/models/cell.rb`](app/models/cell.rb) — `client_scope :sheet_cells, …, ship: %i[id sheet_id row col value formula]` |
+| The declaration (start here) | [`app/models/cell.rb`](app/models/cell.rb) — `client_scope :sheet_cells, ->(sheet_id) { for_sheet(sheet_id) }, ship: %i[row col value formula]` |
 | The macro that derives the rest | [`app/models/concerns/client_scopable.rb`](app/models/concerns/client_scopable.rb) |
 | The registry + the single shape-building seam | [`app/scopes/client_scope.rb`](app/scopes/client_scope.rb) (`Definition#shape_definition`) |
 | The Electric Shape filter it renders | [`app/infrastructure/electric/shape_definition.rb`](app/infrastructure/electric/shape_definition.rb) |
 | Who is allowed to subscribe | [`app/policies/sheet_policy.rb`](app/policies/sheet_policy.rb) (`sync?`) |
 
-`ship:` (the column allow-list) is the one security-critical choice, so it stays
-explicit; everything else (the relation, the `where`, the policy subject, the
-params) is derived from the scope.
+The declaration reads like a `scope` plus one security rider. **`ship:` (the
+payload columns) is the only explicit choice** — it's the data that leaves the
+server, the reviewable trust surface. Everything else is derived from the scope:
+the params (the lambda's own arguments), the `where` (read back from the
+relation, so it can't drift), the policy subject (`:sheet`, from the `sheet_id`
+filter), the authorization rule (`:sync?`, with a boot-time failure if it's
+missing), and the primary key + foreign key (always shipped, since you can't
+replicate without them).
 
 ### 2. The code slice, the part of *Rails* that runs in Wasm (what gets packed into `app.wasm`)
 

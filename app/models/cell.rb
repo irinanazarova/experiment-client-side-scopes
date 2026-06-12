@@ -22,9 +22,10 @@ class Cell < ApplicationRecord
   # bounds live in one place.
   scope :in_region, ->(region) { where(row: region.rows, col: region.cols) }
 
-  # Expose for_sheet as a client-side scope: clients subscribe by name, the
-  # Electric filter is derived from the scope itself, and subscribers are
-  # authorized through the parent sheet. (See ClientScopable.)
-  client_scope :sheet_cells, ->(sheet_id:) { for_sheet(sheet_id) },
-    authorize: :sync?, via: :sheet, ship: %i[id sheet_id row col value formula]
+  # Expose for_sheet as a client-side scope: reads like a scope plus the columns
+  # to ship. The Electric filter, the policy subject (:sheet, from the sheet_id
+  # filter) and the authorization rule (:sync?) are derived; only the payload
+  # columns are listed (id + sheet_id are always included). See ClientScopable.
+  client_scope :sheet_cells, ->(sheet_id) { for_sheet(sheet_id) },
+    ship: %i[row col value formula]
 end
