@@ -65,7 +65,7 @@ module ClientScopable
     case candidates.size
     when 1 then candidates.first.name
     when 0
-      raise ArgumentError, "client_scope: cannot derive `via:` — no belongs_to on " \
+      raise ArgumentError, "client_scope: cannot derive `via:`: no belongs_to on " \
         "#{model} whose foreign key is among #{param_keys.inspect}; pass via: explicitly"
     else
       raise ArgumentError, "client_scope: ambiguous `via:` between " \
@@ -78,7 +78,9 @@ module ClientScopable
   # the rule via alias_rule rather than a method, pass authorize: explicitly.)
   def self.assert_policy_rule!(name, subject_klass, rule)
     policy = "#{subject_klass}Policy".safe_constantize
-    return if policy&.method_defined?(rule)
+    # public_method_defined? mirrors how Action Policy invokes a rule (public_send),
+    # so a rule that exists but isn't callable as a rule still fails the check.
+    return if policy&.public_method_defined?(rule)
 
     raise ArgumentError, "client_scope #{name}: #{subject_klass}Policy##{rule} is not " \
       "defined (the rule that guards replication); define it or pass authorize:"

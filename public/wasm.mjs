@@ -54,7 +54,7 @@ log "Ruby #{RUBY_VERSION} running in the browser (ruby.wasm)"
 
 grand_rows = conn.exec_query(ds[:grandTotalSql].to_s, "total")
 total = grand_rows[0]["total"]
-log "exec_query(grand_total_sql) -> #{grand_rows.inspect}"
+log "exec_query(grandTotalSql) -> #{grand_rows.inspect}"
 
 col_rows = conn.exec_query(ds[:sumsSql].to_s, "col", "total")
 ruby_resum = col_rows.sum { |r| r["total"] }
