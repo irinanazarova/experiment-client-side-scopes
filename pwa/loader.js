@@ -46,7 +46,11 @@ async function start() {
 
   try {
     setStatus("Starting the app…");
-    await navigator.serviceWorker.register("/rails.sw.js", { scope: "/", type: "module" });
+    // updateViaCache: "none" so the update check bypasses the HTTP cache for
+    // the worker AND its static imports (vendor/wasmify-rails, database.js).
+    // The default ("imports") revalidates only rails.sw.js, so a new worker
+    // could still pull stale imported modules from cache after a deploy.
+    await navigator.serviceWorker.register("/rails.sw.js", { scope: "/", type: "module", updateViaCache: "none" });
     // Resolves once the worker has booted the DB + Rails VM and activated.
     await navigator.serviceWorker.ready;
     setStatus("Ready");
