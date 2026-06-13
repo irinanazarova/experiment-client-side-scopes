@@ -222,8 +222,9 @@ All five spikes run locally and were verified in a real browser (see the
     so the adapter's hardcoded columns serve the model layer.
 
 - **The Rails slice in the browser (Phase C)** — `pwa/`: the whole app,
-  packed by `wasmify-rails` into `app.wasm` (~125 MB), boots inside a service
-  worker in ~10 s and serves same-origin requests in the tab. Verified:
+  packed by `wasmify-rails` into `app.wasm` (~52 MB stripped, ~9 MB brotli on
+  the wire), boots inside a service worker in ~10 s and serves same-origin
+  requests in the tab. Verified:
   `/sheets/1` renders end to end (router -> `SheetsController` -> Active
   Record through the real connection pool -> the gem's `pglite` adapter ->
   the Electric-synced replica -> ActionView), and `/sheets/1/aggregates`
@@ -303,7 +304,8 @@ bug they found is fixed and verified).
 - **`update_all` bypasses model `numericality`**; the `Transform` finite guard
   covers the operand, full per-cell validation on bulk writes is future work.
 - Open known unknowns still stand: initial-seed cost, eviction, multi-tab
-  coherence, replica observability, cold start (app.wasm is ~125 MB), and
+  coherence, replica observability, cold start (app.wasm is ~52 MB, ~9 MB
+  brotli), and
   the in-tab render cost (~600 ms per fragment vs ~8 ms for the JS stand-in;
   Herb-style fragment diffing or partial-scoped renders are the lever).
 

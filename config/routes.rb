@@ -12,13 +12,19 @@ Rails.application.routes.draw do
     resources :regions, only: [:show], module: :sheets
   end
 
-  # Phase B: Ruby running in the browser (ruby.wasm) querying the local PGlite
-  # replica through a connection seam. Proves the ruby.wasm <-> PGlite bridge.
-  get "wasm" => "wasm#show"
-
-  # Phase B+: the real activerecord gem packed into ruby.wasm, executing a query
-  # against the PGlite replica through a pure-Ruby connection adapter.
-  get "wasm_ar" => "wasm#ar"
+  # Phase B / B+ demos: Ruby in the browser (ruby.wasm) querying the local
+  # PGlite replica. /wasm proves the ruby.wasm <-> PGlite bridge; /wasm_ar runs
+  # the real activerecord gem in the VM through a pure-Ruby connection adapter.
+  #
+  # Host-only: both pages fetch /ruby-app.wasm and the demo scripts, which
+  # slice:pack stashes out of the slice (they would otherwise add ~7 MB brotli
+  # for a demo the slice never uses). Skipping the routes under RAILS_ENV=wasm
+  # makes the slice return a clean 404 instead of rendering a page that 500s on
+  # the missing assets.
+  unless Rails.env.wasm?
+    get "wasm" => "wasm#show"
+    get "wasm_ar" => "wasm#ar"
+  end
 
   # The browser asks for a named client-side scope -> gets an Electric Shape config.
   resources :client_scopes, only: [:show]

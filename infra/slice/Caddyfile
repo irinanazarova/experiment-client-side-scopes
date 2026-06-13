@@ -21,12 +21,22 @@
 	# navigations are served from the in-VM Rails and never reach Caddy.
 	#
 	# precompressed serves the build-time app.wasm.br / .gz when the client
-	# accepts it (every modern browser sends br), so the 130MB wasm ships as a
-	# ~32MB static brotli file with no per-request compression. `encode` above
+	# accepts it (every modern browser sends br), so the ~52MB wasm ships as a
+	# ~9MB static brotli file with no per-request compression. `encode` above
 	# still handles the proxied host responses and any asset without a
 	# precompressed sibling; it skips anything already encoded.
 	handle {
 		root * /srv
+
+		# The service worker appends ?v=SW_BUILD to /app.wasm, and that stamp
+		# changes every deploy, so the bytes at any given URL are immutable
+		# within a deploy. Cache hard and let the version bump be the only
+		# invalidation. (The file itself ships no Cache-Control, so without this
+		# the browser would only cache it heuristically and could refetch the
+		# ~9MB binary on warm restarts.) The matcher ignores the query string.
+		@wasm path /app.wasm
+		header @wasm Cache-Control "public, max-age=31536000, immutable"
+
 		try_files {path} /index.html
 		file_server {
 			precompressed br gzip

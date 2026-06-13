@@ -4,7 +4,7 @@ Live:
 - **Standalone** (server Rails + browser PGlite): https://client-side-scopes.fly.dev/sheets/1
 - **The slice, Rails in the browser**: https://client-side-scopes-slice.fly.dev
   Just open it: a loader installs the in-browser Rails and drops you into the app.
-  The first visit downloads `app.wasm` (~24 MB brotli); after that the service
+  The first visit downloads `app.wasm` (~9 MB brotli); after that the service
   worker serves `/` from the in-VM Rails. `/boot.html` is a diagnostics launcher.
 
 Four apps: `client-side-scopes` (Rails, public), `client-side-scopes-slice`
@@ -30,11 +30,15 @@ cd infra/slice && fly deploy                    # MUST cd in; the root .dockerig
 `wasmify:pack` directly, to build the public slice. `app.wasm` is downloadable,
 so it is a publish boundary, and wasmify maps all of `config/` into the module.
 `slice:pack`:
-1. stashes `config/master.key` + `config/credentials.yml.enc` outside the packed
-   dirs (so they can't be packed), runs the pack, restores them;
-2. runs `wasm-strip` to drop ~19 MB of debug sections (needs `brew install wabt`;
-   skipped with a warning if absent);
+1. stashes `config/master.key` + `config/credentials.yml.enc` (secrets) **and**
+   the host-only `public/` demo assets (`ruby-app.wasm` + the `/wasm` scripts,
+   ~7 MB brotli the slice never serves) outside the packed dirs, runs the pack,
+   restores them;
+2. runs `wasm-strip` to drop ~19 MB of debug sections from `app.wasm` (needs
+   `brew install wabt`; skipped with a warning if absent);
 3. greps the output and **aborts if the master key is present**.
+
+The packed slice `app.wasm` is ~52 MB raw, ~9 MB brotli on the wire.
 
 If `fly deploy` stalls on "Waiting for depot builder" or times out (flaky
 network / depot down), use **`fly deploy --local-only`** to build with local

@@ -66,7 +66,7 @@ bin/rails server                # http://localhost:3000/sheets/1
 The slice (Rails in the browser):
 
 ```bash
-bin/rails wasmify:pack          # pack the app into app.wasm (~125 MB; slow first time)
+bin/rails slice:pack            # pack app.wasm (~52 MB; slow first time) — never wasmify:pack (leaks secrets)
 cd pwa && npm install && npm run dev   # http://localhost:5173
 ```
 

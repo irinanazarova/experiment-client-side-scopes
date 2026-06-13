@@ -1,11 +1,11 @@
 # The slice PWA, served by Caddy. Build context is infra/slice (the deploy
 # step copies pwa/dist here first), so the image is just Caddy + the static
-# bundle (incl. the stripped ~106MB app.wasm) + the Caddyfile.
+# bundle (incl. the stripped ~52MB app.wasm) + the Caddyfile.
 
 # Precompress the large static assets (mainly app.wasm) once at build time, so
 # Caddy serves a static .br/.gz instead of compressing it on every cold visit.
 # Brotli runs once here, so use max quality (-q 11): on the stripped app.wasm
-# it lands ~21MB br vs ~30MB gzip, and costs no per-request CPU. The .gz is the
+# it lands ~9MB br vs ~13MB gzip, and costs no per-request CPU. The .gz is the
 # fallback for the rare client without brotli.
 FROM alpine:3 AS compress
 RUN apk add --no-cache brotli gzip
