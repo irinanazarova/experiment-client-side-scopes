@@ -43,7 +43,12 @@ const initVM = async (progress, opts = {}) => {
 
   let redirectConsole = true;
 
-  vm = await initRailsVM("/app.wasm", {
+  // Cache-bust the wasm by build stamp. The binary is served from /srv with no
+  // explicit Cache-Control, so the browser is free to hand back a stale copy
+  // after a deploy even once the new worker installs. Keying the URL to
+  // SW_BUILD changes it on every deploy (forcing a fresh download) while
+  // staying byte-stable within a deploy (warm SW restarts still hit cache).
+  vm = await initRailsVM(`/app.wasm?v=${SW_BUILD}`, {
     database: { adapter: "pglite" },
     // PGlite returns Promises; the adapter awaits across the JS bridge, so
     // both boot and requests must run in async (asyncify) mode.
