@@ -22,14 +22,15 @@ module Electric
     # reconnects its replication periodically). Turn those into a retryable 503
     # rather than letting them surface as an uncaught 500; pglite-sync re-polls.
     #
-    # OpenSSL::SSL is absent in the in-VM (wasm) Ruby: ruby.wasm builds openssl
-    # without the TLS submodule, so naming OpenSSL::SSL::SSLError here would
-    # raise NameError when the slice eager-loads this class and crash boot. The
-    # slice never runs this proxy (Caddy forwards /electric to the host Rails),
-    # so guarding the constant just lets the class load there. On the host the
-    # submodule is present and the SSL error is caught as before.
+    # SocketError and OpenSSL::SSL are absent in the in-VM (wasm) Ruby: ruby.wasm
+    # ships no socket/TLS stack. Naming those constants at class-load would raise
+    # NameError when the slice eager-loads this class and crash boot. The slice
+    # never runs this proxy (Caddy forwards /electric to the host Rails), so
+    # guard the wasm-absent constants with defined? to let the class load there.
+    # On the host all are present and caught as before.
     UPSTREAM_ERRORS = [
-      Net::OpenTimeout, Net::ReadTimeout, IOError, SocketError, SystemCallError,
+      Net::OpenTimeout, Net::ReadTimeout, IOError, SystemCallError,
+      *(SocketError if defined?(SocketError)),
       *(OpenSSL::SSL::SSLError if defined?(OpenSSL::SSL::SSLError))
     ].freeze
 
