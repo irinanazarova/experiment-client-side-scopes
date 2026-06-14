@@ -43,11 +43,13 @@ const initVM = async (progress, opts = {}) => {
 
   let redirectConsole = true;
 
-  // Cache-bust the wasm by build stamp. The binary is served from /srv with no
-  // explicit Cache-Control, so the browser is free to hand back a stale copy
-  // after a deploy even once the new worker installs. Keying the URL to
-  // SW_BUILD changes it on every deploy (forcing a fresh download) while
-  // staying byte-stable within a deploy (warm SW restarts still hit cache).
+  // Cache-bust the wasm by build stamp. The binary ships with an immutable
+  // Cache-Control keyed to this URL (see infra/slice/Caddyfile), so the bytes
+  // are stable within a deploy (warm SW restarts hit the HTTP cache, and Chrome
+  // reuses its compiled-code cache) and refreshed on the next deploy. We pass
+  // the URL and let initRailsVM compileStream it: compiling the module is only
+  // ~200 ms, so there is nothing worth caching at the app level (and Chrome
+  // cannot persist a WebAssembly.Module to IndexedDB anyway).
   vm = await initRailsVM(`/app.wasm?v=${SW_BUILD}`, {
     database: { adapter: "pglite" },
     // PGlite returns Promises; the adapter awaits across the JS bridge, so
