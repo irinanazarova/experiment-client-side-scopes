@@ -36,6 +36,10 @@ export const setupPGliteDatabase = async (progress) => {
     headers: { Accept: "application/json" },
   }).then((r) => r.json());
 
+  // Stream the slice in. PGlite is single-threaded, so a count(*) poller would
+  // just queue behind the ingestion (no usable incremental signal), and
+  // pglite-sync only exposes an "initial sync done" callback — so the loader
+  // shows a smooth estimate for this phase rather than a live row count.
   progress?.updateStep("Syncing slice from Electric...");
   await db.electric.syncShapeToTable({
     shape: { url: shape.url, params: shape.params },

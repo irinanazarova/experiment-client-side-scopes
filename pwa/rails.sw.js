@@ -16,6 +16,40 @@ import { setupPGliteDatabase } from "./database.js";
 const SW_BUILD = typeof __SW_BUILD__ === "undefined" ? "dev" : __SW_BUILD__;
 console.log("[rails-web] service worker build", SW_BUILD);
 
+// Download app.wasm with byte progress so the loader shows a real bar for the
+// largest, most variable phase, then compile. ~54 MB is the decompressed size
+// the browser inflates the brotli stream into; it only scales the fraction. On
+// any failure this returns the URL so initRailsVM compileStreams it instead —
+// boot is never blocked by the progress path.
+const APP_WASM_BYTES = 54_000_000;
+const loadWasmModule = async (url, progress) => {
+  try {
+    const resp = await fetch(url);
+    if (!resp.ok || !resp.body) throw new Error(`fetch ${resp.status}`);
+    const reader = resp.body.getReader();
+    const chunks = [];
+    let received = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      received += value.length;
+      progress?.updateProgress(Math.min(0.99, received / APP_WASM_BYTES));
+    }
+    const bytes = new Uint8Array(received);
+    let offset = 0;
+    for (const c of chunks) {
+      bytes.set(c, offset);
+      offset += c.length;
+    }
+    progress?.updateProgress(1);
+    return await WebAssembly.compile(bytes);
+  } catch (e) {
+    console.warn("[rails-web] streamed wasm load failed; compileStreaming instead:", e);
+    return url;
+  }
+};
+
 let db = null;
 
 const initDB = async (progress) => {
@@ -43,14 +77,13 @@ const initVM = async (progress, opts = {}) => {
 
   let redirectConsole = true;
 
-  // Cache-bust the wasm by build stamp. The binary ships with an immutable
-  // Cache-Control keyed to this URL (see infra/slice/Caddyfile), so the bytes
-  // are stable within a deploy (warm SW restarts hit the HTTP cache, and Chrome
-  // reuses its compiled-code cache) and refreshed on the next deploy. We pass
-  // the URL and let initRailsVM compileStream it: compiling the module is only
-  // ~200 ms, so there is nothing worth caching at the app level (and Chrome
-  // cannot persist a WebAssembly.Module to IndexedDB anyway).
-  vm = await initRailsVM(`/app.wasm?v=${SW_BUILD}`, {
+  // Download + compile app.wasm with byte progress (loadWasmModule), then hand
+  // the module to initRailsVM. The ?v=SW_BUILD stamp cache-busts the download:
+  // the binary ships with an immutable Cache-Control keyed to that URL, so the
+  // bytes are stable within a deploy and refreshed on the next.
+  progress?.updateStep("Loading the app…");
+  const wasmSrc = await loadWasmModule(`/app.wasm?v=${SW_BUILD}`, progress);
+  vm = await initRailsVM(wasmSrc, {
     database: { adapter: "pglite" },
     // PGlite returns Promises; the adapter awaits across the JS bridge, so
     // both boot and requests must run in async (asyncify) mode.
