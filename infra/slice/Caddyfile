@@ -37,6 +37,14 @@
 		@wasm path /app.wasm
 		header @wasm Cache-Control "public, max-age=31536000, immutable"
 
+		# Vite emits /assets/* with content-hashed filenames (the PGlite engine
+		# wasm/data, the JS chunks, CSS), so they are immutable: a content change
+		# is a new filename. They otherwise ship no Cache-Control, leaving a
+		# returning visitor on fragile heuristic caching; pin them so the ~4.7 MB
+		# PGlite engine and the JS bundle are reliably reused, not refetched.
+		@assets path /assets/*
+		header @assets Cache-Control "public, max-age=31536000, immutable"
+
 		try_files {path} /index.html
 		file_server {
 			precompressed br gzip

@@ -12,7 +12,7 @@ RUN apk add --no-cache brotli gzip
 COPY dist /srv
 RUN set -eux; \
     find /srv -type f \
-      \( -name '*.wasm' -o -name '*.js' -o -name '*.css' -o -name '*.html' -o -name '*.json' -o -name '*.svg' \) \
+      \( -name '*.wasm' -o -name '*.data' -o -name '*.js' -o -name '*.css' -o -name '*.html' -o -name '*.json' -o -name '*.svg' \) \
       -size +1k -print0 \
     | while IFS= read -r -d '' f; do \
         brotli -q 11 -f -k "$f"; \
