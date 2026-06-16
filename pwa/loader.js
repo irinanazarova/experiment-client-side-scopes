@@ -19,7 +19,7 @@ const retryEl = document.getElementById("retry");
 const M = [
   { id: "engine", est: 3, real: false },
   { id: "data", est: 8, real: false }, // Electric sync; no usable incremental signal (see database.js)
-  { id: "app", est: 6, real: true, fmt: (f) => `${(f * 9).toFixed(1)} / 9 MB` },
+  { id: "app", est: 6, real: false }, // app.wasm via compileStreaming (no byte stream, keeps the code cache)
   { id: "rails", est: 3, real: false },
 ];
 const rowEl = (i) => document.getElementById("m-" + M[i].id);
