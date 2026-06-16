@@ -2,7 +2,7 @@
 # Companions: client-side-scopes-db (Postgres, wal_level=logical) and
 # client-side-scopes-electric (the Electric sync service, infra/electric/).
 app = "client-side-scopes"
-primary_region = "dfw"
+primary_region = "sjc"
 
 [build]
 

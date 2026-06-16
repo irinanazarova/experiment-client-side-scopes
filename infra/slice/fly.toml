@@ -3,7 +3,7 @@
 # runs in each visitor's tab (app.wasm in a service worker); this app only
 # ships the bundle and forwards the few server calls.
 app = "client-side-scopes-slice"
-primary_region = "dfw"
+primary_region = "sjc"
 
 [build]
   dockerfile = "Dockerfile"

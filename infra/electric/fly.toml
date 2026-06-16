@@ -3,7 +3,7 @@
 # (docs/architecture.md, "Hardening before production"): production must
 # proxy/sign shape requests through Rails.
 app = "client-side-scopes-electric"
-primary_region = "dfw"
+primary_region = "sjc"
 
 [build]
   image = "electricsql/electric:latest"
