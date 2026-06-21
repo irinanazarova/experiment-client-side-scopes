@@ -95,7 +95,86 @@ export function mountLiveRegionsViaWorker({ onRender, classify } = {}) {
       pump();
     }
   };
+
+  // --- Watcher liveness ------------------------------------------------------
+  // The live-query watchers run in the service worker's memory. The browser
+  // evicts an idle worker and drops them; after that nothing re-renders until we
+  // re-announce. Heartbeat the worker — if it can't confirm it is watching, show
+  // a hint + a Resume button that re-announces the regions (the worker re-syncs
+  // the replica and re-registers the queries). The ping itself also nudges the
+  // worker awake, so an active tab tends to stay live.
+  const announce = () =>
+    navigator.serviceWorker?.controller?.postMessage({
+      type: "watch-regions",
+      regions: regions.map(({ name, watch }) => ({ name, watch })),
+    });
+
+  const isWatching = () =>
+    new Promise((resolve) => {
+      const sw = navigator.serviceWorker?.controller;
+      if (!sw) return resolve(false);
+      const ch = new MessageChannel();
+      const timer = setTimeout(() => resolve(false), 3000); // no reply -> evicted (or busy)
+      ch.port1.onmessage = (ev) => { clearTimeout(timer); resolve(!!ev.data?.watching); };
+      try { sw.postMessage({ type: "ping-watchers" }, [ch.port2]); }
+      catch { clearTimeout(timer); resolve(false); }
+    });
+
+  const banner = makeWakeBanner();
+  let reconnecting = false;
+  banner.onResume(async () => {
+    reconnecting = true;
+    banner.reconnecting();
+    announce(); // worker re-syncs the replica + re-registers the live queries
+    for (let i = 0; i < 30; i++) {
+      await new Promise((r) => setTimeout(r, 1000));
+      if (await isWatching()) { reconnecting = false; return banner.hide(); }
+    }
+    reconnecting = false;
+    banner.failed();
+  });
+
+  let misses = 0;
+  setInterval(async () => {
+    if (reconnecting) return; // don't fight an in-progress wake
+    if (await isWatching()) { misses = 0; banner.hide(); }
+    else if (++misses >= 2) banner.down(); // two misses (~20s) so a busy render isn't a false alarm
+  }, 10000);
+
   return true;
+}
+
+// A small fixed toast: "Live updates paused — Resume". Created hidden; shown
+// only when the worker can't confirm its watchers are alive.
+function makeWakeBanner() {
+  const el = document.createElement("div");
+  el.style.cssText =
+    "position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:9999;display:none;" +
+    "align-items:center;gap:.75rem;padding:.55rem .9rem;background:#0f172a;color:#fff;border-radius:10px;" +
+    "box-shadow:0 12px 32px -10px rgba(15,23,42,.55);font:500 .84rem ui-sans-serif,system-ui,sans-serif;";
+  const dot = document.createElement("span");
+  dot.style.cssText = "width:8px;height:8px;border-radius:50%;background:#f59e0b;flex:none;";
+  const text = document.createElement("span");
+  const btn = document.createElement("button");
+  btn.style.cssText =
+    "padding:.32rem .8rem;border:0;border-radius:7px;background:#6366f1;color:#fff;font-weight:600;font-size:.82rem;cursor:pointer;";
+  el.append(dot, text, btn);
+  document.body.appendChild(el);
+
+  const set = (msg, label, disabled, color) => {
+    text.textContent = msg;
+    btn.textContent = label;
+    btn.disabled = disabled;
+    dot.style.background = color;
+    el.style.display = "flex";
+  };
+  return {
+    onResume(fn) { btn.addEventListener("click", () => { if (!btn.disabled) fn(); }); },
+    down() { set("Live updates paused — the app went to sleep.", "Resume", false, "#f59e0b"); },
+    reconnecting() { set("Reconnecting…", "…", true, "#6366f1"); },
+    failed() { set("Couldn't reconnect.", "Try again", false, "#ef4444"); },
+    hide() { el.style.display = "none"; },
+  };
 }
 
 // Standalone mode: the page owns the PGlite instance. Register each region's

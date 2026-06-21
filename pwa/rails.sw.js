@@ -223,6 +223,16 @@ self.addEventListener("fetch", (event) => {
 });
 
 self.addEventListener("message", async (event) => {
+  // Liveness probe from the page. The live-query watchers (watchRegions) live in
+  // THIS worker's memory; when the browser evicts an idle worker they are gone
+  // and regionsWatched resets to false on the next restart. Answer over the
+  // message port so the page can notice and offer to wake them. Handled before
+  // the log so the ~10s heartbeat stays quiet.
+  if (event.data?.type === "ping-watchers") {
+    event.ports[0]?.postMessage({ watching: regionsWatched && !!db });
+    return;
+  }
+
   console.log("[rails-web] Received worker message:", event.data);
 
   if (event.data.type === "reload-rails") {
