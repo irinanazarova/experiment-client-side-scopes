@@ -34,7 +34,8 @@
 <div id="sheet-app" class="w-full max-w-[92rem] mx-auto"
      data-controller="grid"
      data-grid-cell-url-value="<%= sheet_hotwire_cell_path(@sheet) %>"
-     data-grid-tick-url-value="<%= sheet_hotwire_tick_path(@sheet) %>">
+     data-grid-tick-url-value="<%= sheet_hotwire_tick_path(@sheet) %>"
+     data-grid-max-value="<%= @max_value %>">
   <header class="mb-4">
     <h1 class="text-2xl font-bold"><%= @sheet.name %></h1>
     <p class="text-sm text-gray-500">

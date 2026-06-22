@@ -12,7 +12,7 @@ const RECENT_MS = 3000
 const TICK_MS = 1000
 
 export default class extends Controller {
-  static values = { cellUrl: String, tickUrl: String }
+  static values = { cellUrl: String, tickUrl: String, max: Number }
   static targets = ["server", "latency", "flow"]
 
   connect() {
@@ -55,6 +55,26 @@ export default class extends Controller {
     })
   }
 
+  // A cell write that reverts and flags itself if the server rejects it (e.g. a
+  // value past the column's numeric range), so a rejected edit is visible rather
+  // than silently lost.
+  writeCell(cell, value, original) {
+    fetch(this.cellUrlValue, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded", "X-CSRF-Token": this.csrf },
+      body: new URLSearchParams({ row: cell.dataset.row, col: cell.dataset.col, value })
+    }).then((res) => { if (!res.ok) this.reject(cell, original) }).catch(() => this.reject(cell, original))
+  }
+
+  reject(cell, original) {
+    cell.textContent = original
+    this.recent.delete(`${cell.dataset.row}:${cell.dataset.col}`)
+    this.flash(cell, "flash-reject")
+    this.actionAt = null
+    this.actionKind = null
+    if (this.hasLatencyTarget) this.latencyTarget.textContent = "edit rejected: value out of range for this cell"
+  }
+
   begin(kind) { this.actionAt = performance.now(); this.actionKind = kind }
 
   // --- inline cell editing ---
@@ -76,11 +96,16 @@ export default class extends Controller {
       if (done) return
       done = true
       const value = input.value
+      const num = Number(value)
+      if (!Number.isFinite(num) || (this.hasMaxValue && Math.abs(num) >= this.maxValue)) {
+        this.reject(cell, original) // out of the column's range; keep the old value
+        return
+      }
       cell.textContent = value // optimistic: instant; the morph confirms it
       this.flash(cell, "flash-local")
       this.markRecent(cell.dataset.row, cell.dataset.col)
       this.begin("local")
-      this.post(this.cellUrlValue, { row: cell.dataset.row, col: cell.dataset.col, value })
+      this.writeCell(cell, value, original)
     }
     input.addEventListener("blur", commit)
     input.addEventListener("keydown", (key) => {
@@ -139,7 +164,7 @@ export default class extends Controller {
   }
 
   flash(cell, klass) {
-    cell.classList.remove("flash-local", "flash-remote")
+    cell.classList.remove("flash-local", "flash-remote", "flash-reject")
     void cell.offsetWidth // restart the animation
     cell.classList.add(klass)
     setTimeout(() => cell.classList.remove(klass), FLASH_MS)

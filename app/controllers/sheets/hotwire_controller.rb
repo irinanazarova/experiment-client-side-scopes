@@ -11,8 +11,12 @@ module Sheets
   class HotwireController < ApplicationController
     protect_from_forgery with: :null_session
 
-    # A value too large for the cell's numeric column should not 500 the write.
-    rescue_from ActiveRecord::RangeError, with: -> { head :unprocessable_content }
+    # A value past the cell's numeric range should not 500 the write. The cell
+    # endpoints answer 422 (the client reverts and flags it); the column-apply
+    # form just re-renders unchanged.
+    rescue_from ActiveRecord::RangeError do
+      action_name == "update" ? redirect_to(sheet_hotwire_path(@sheet)) : head(:unprocessable_content)
+    end
 
     def show
       @sheet = Sheet.find(params[:sheet_id])
@@ -74,6 +78,10 @@ module Sheets
       @sums = Cells::ColumnAggregates.new(@sheet).by_column
       @values = Cells::GridWindow.new(@sheet).values
       @row_limit = Cells::GridWindow::DEFAULT_LIMIT
+      # The cell's numeric range, derived from the column, so the client can
+      # reject an out-of-range edit before it round-trips.
+      value_column = Cell.columns_hash["value"]
+      @max_value = 10**(value_column.precision - value_column.scale)
     end
   end
 end
