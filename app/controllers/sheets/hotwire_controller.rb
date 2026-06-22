@@ -11,6 +11,9 @@ module Sheets
   class HotwireController < ApplicationController
     protect_from_forgery with: :null_session
 
+    # A value too large for the cell's numeric column should not 500 the write.
+    rescue_from ActiveRecord::RangeError, with: -> { head :unprocessable_content }
+
     def show
       @sheet = Sheet.find(params[:sheet_id])
       load_grid

@@ -9,8 +9,12 @@
 
 <%# Consumer: subscribe this page to the relation's stream. The same relation
     the writer publishes to (DataChange.topic), so they rendezvous on the string
-    without naming each other. This one tag is the whole consumer surface. %>
-<%= turbo_stream_from DataChange.topic(Cell.for_sheet(@sheet.id)) %>
+    without naming each other. data-turbo-permanent keeps the ONE subscription
+    alive across morphs; without it every refresh re-subscribes and drops the
+    broadcast that arrives during the reconnect. %>
+<div id="cable-source" data-turbo-permanent>
+  <%= turbo_stream_from DataChange.topic(Cell.for_sheet(@sheet.id)) %>
+</div>
 <%= render "sheets/grid_styles" %>
 <style>
   .ss-btn { border-radius: .375rem; padding: .5rem 1rem; font-size: .875rem; font-weight: 600; color: #fff; border: 0; cursor: pointer; }

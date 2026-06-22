@@ -76,9 +76,10 @@ export default class extends Controller {
       if (done) return
       done = true
       const value = input.value
-      cell.textContent = original // the morph brings back the authoritative value
-      this.begin("local")
+      cell.textContent = value // optimistic: instant; the morph confirms it
+      this.flash(cell, "flash-local")
       this.markRecent(cell.dataset.row, cell.dataset.col)
+      this.begin("local")
       this.post(this.cellUrlValue, { row: cell.dataset.row, col: cell.dataset.col, value })
     }
     input.addEventListener("blur", commit)
@@ -158,7 +159,7 @@ export default class extends Controller {
     if (this.hasLatencyTarget) {
       const cells = `${changed} cell${changed === 1 ? "" : "s"}`
       this.latencyTarget.textContent =
-        kind === "local" ? `your edit → morph: ${ms} ms · ${cells}`
+        kind === "local" ? `your edit → morph: ${ms} ms`
         : kind === "server" ? `server write → morph: ${ms} ms · ${cells}`
         : `remote change → morph · ${cells}`
     }
