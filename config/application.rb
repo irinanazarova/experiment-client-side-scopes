@@ -13,7 +13,9 @@ require "action_controller/railtie"
 # require "action_mailbox/engine"
 # require "action_text/engine"
 require "action_view/railtie"
-# require "action_cable/engine"
+# Host-only: the slice (RAILS_ENV=wasm) has no cable server, and loading the
+# engine there risks the in-VM boot. The /hotwire comparison route needs it.
+require "action_cable/engine" unless ENV["RAILS_ENV"] == "wasm"
 # require "rails/test_unit/railtie"
 
 # Require the gems listed in Gemfile, including any gems

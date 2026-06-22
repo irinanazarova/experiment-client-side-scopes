@@ -1,0 +1,70 @@
+<% content_for :title, "#{@sheet.name} — Hotwire (coarse server-push)" %>
+<% content_for :head do %>
+  <%# Opt the page into morphing refreshes: broadcast_refresh re-fetches and
+      morphs, so the table updates in place without losing scroll. %>
+  <meta name="turbo-refresh-method" content="morph">
+  <meta name="turbo-refresh-scroll" content="preserve">
+  <%= action_cable_meta_tag %>
+<% end %>
+
+<%# Consumer: subscribe this page to the data-change topic. The same relation
+    the writer publishes to (DataChange.topic), so they rendezvous on the string
+    without naming each other. This one tag is the whole consumer surface. %>
+<%= turbo_stream_from DataChange.topic(Cell.for_sheet(@sheet.id)) %>
+<%= render "sheets/grid_styles" %>
+
+<div class="w-full max-w-[92rem] mx-auto">
+  <header class="mb-4">
+    <h1 class="text-2xl font-bold"><%= @sheet.name %></h1>
+    <p class="text-sm text-gray-500">
+      Coarse, server-push (Hotwire). A write posts to Rails; on commit the server
+      publishes a refresh to <code class="text-xs"><%= DataChange.topic(Cell.for_sheet(@sheet.id)) %></code>
+      and every open tab morphs. No local database, no client SQL.
+    </p>
+  </header>
+
+  <%= form_with url: sheet_hotwire_path(@sheet), method: :post,
+        class: "mb-4 p-3 rounded-lg border bg-white flex items-end gap-3 flex-wrap" do |f| %>
+    <label class="text-sm">Column
+      <%= f.number_field :column, value: 3, min: 1, max: @sheet.col_count,
+            autocomplete: "off", class: "block border rounded px-2 py-1 w-20" %>
+    </label>
+    <label class="text-sm">Operation
+      <%= f.select :operation,
+            [["add +", "add"], ["multiply ×", "multiply"], ["set =", "set"]],
+            {}, class: "block border rounded px-2 py-1" %>
+    </label>
+    <label class="text-sm">Operand
+      <%= f.number_field :operand, value: 100, step: 1,
+            autocomplete: "off", class: "block border rounded px-2 py-1 w-24" %>
+    </label>
+    <%= f.submit "Apply to whole column",
+          class: "text-white bg-amber-500 hover:bg-amber-600 rounded px-4 py-2 text-sm font-medium" %>
+  <% end %>
+
+  <section class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+    <%= render "sheets/stats", stats: @stats %>
+  </section>
+
+  <div class="ss-wrap">
+    <table class="ss" id="grid">
+      <thead>
+        <tr>
+          <th class="ss-corner">#</th>
+          <th class="ss-rowmax">Max</th>
+          <% (1..@sheet.col_count).each do |col| %>
+            <th>C<%= col %></th>
+          <% end %>
+        </tr>
+      </thead>
+      <tbody><%= render "sheets/totals", sheet: @sheet, sums: @sums, stats: @stats %></tbody>
+      <tbody><%= render "sheets/rows", sheet: @sheet, row_limit: @row_limit, values: @values %></tbody>
+    </table>
+  </div>
+
+  <p class="text-xs text-gray-400 mt-2">
+    Showing rows 1–<%= @row_limit %> of <%= number_with_delimiter(@sheet.row_count) %>.
+    Open this page in two tabs and apply a change: both morph together over the
+    Turbo refresh, no per-fragment wiring.
+  </p>
+</div>

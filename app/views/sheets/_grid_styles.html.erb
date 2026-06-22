@@ -1,0 +1,19 @@
+<%# Shared grid table styling (plain CSS, no Tailwind content-scan dependency).
+    Used by the reactive demos so the rendered table reads the same everywhere. %>
+<style>
+  .ss-wrap { border: 1px solid #e5e7eb; border-radius: .5rem; background: #fff; overflow: auto; max-height: 620px; }
+  .ss { border-collapse: separate; border-spacing: 0; font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; width: 100%; }
+  .ss th, .ss td { border-right: 1px solid #eef0f3; border-bottom: 1px solid #eef0f3; padding: 4px 8px; white-space: nowrap; }
+  .ss thead th { position: sticky; top: 0; z-index: 3; background: #f3f4f6; color: #4b5563; font-weight: 600; text-align: center; min-width: 76px; }
+  .ss-totals td { position: sticky; top: 26px; z-index: 2; background: #eef2ff; color: #3730a3; font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; }
+  .ss-totals td.ss-corner { background: #e0e7ff; text-align: center; }
+  .ss-corner, .ss-rownum { position: sticky; left: 0; z-index: 1; width: 44px; min-width: 44px; max-width: 44px; }
+  .ss thead th.ss-corner { z-index: 4; min-width: 44px; }
+  .ss-rownum { background: #f9fafb; color: #9ca3af; text-align: center; }
+  .ss-rowmax { position: sticky; left: 44px; z-index: 1; background: #f0fdf4; color: #166534; text-align: right; font-variant-numeric: tabular-nums; width: 92px; min-width: 92px; max-width: 92px; }
+  .ss thead th.ss-rowmax { z-index: 4; background: #ecfdf5; color: #065f46; }
+  .ss-totals td.ss-corner, .ss-totals td.ss-rowmax { z-index: 3; }
+  .ss-totals td.ss-rowmax { background: #d1fae5; color: #065f46; }
+  .ss-cell { text-align: right; font-variant-numeric: tabular-nums; cursor: cell; background: #fff; }
+  .ss-cell:hover { background: #fffbeb; }
+</style>

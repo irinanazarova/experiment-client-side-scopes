@@ -24,6 +24,11 @@ Rails.application.routes.draw do
   unless Rails.env.wasm?
     get "wasm" => "wasm#show"
     get "wasm_ar" => "wasm#ar"
+
+    # Comparison route: the coarse, server-push (plain Hotwire) spreadsheet.
+    # Host-only; it needs Action Cable, which the slice does not load.
+    get "sheets/:sheet_id/hotwire" => "sheets/hotwire#show", as: :sheet_hotwire
+    post "sheets/:sheet_id/hotwire" => "sheets/hotwire#update"
   end
 
   # The browser asks for a named client-side scope -> gets an Electric Shape config.
