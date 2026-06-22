@@ -59,3 +59,6 @@ build/
 rubies/
 # Vite / PWA build output and copied slice dist.
 dist/
+
+# Local-only working note (proposal draft); keep on disk, out of the repo.
+docs/reactive-rails.md
