@@ -2,40 +2,37 @@
 
 module Cells
   # Domain layer query object. Column sums and the grand total over a sheet.
-  # Each aggregate is offered two ways from the same relation, so the server's
-  # value and the SQL the browser runs against its PGlite replica can never
-  # drift: #by_column / #grand_total execute here (Active Record), #sums_sql /
-  # #total_sql are the same queries as strings PGlite runs verbatim (it is real
-  # Postgres, so AR's generated SQL runs as-is). Mirrors how GridWindow pairs
-  # #values and #sql.
-  class ColumnAggregates
-    def initialize(sheet)
-      @sheet = sheet
+  # Each aggregate is offered two ways from one relation, so the server value and
+  # the SQL the browser runs against its PGlite replica cannot drift: #by_column
+  # / #grand_total execute the relation (Active Record), #watch_sql / #total_sql
+  # are the same relations as strings the browser watches. Mirrors how GridWindow
+  # pairs #values and #watch_sql.
+  class ColumnAggregates < ApplicationQuery
+    observable_by :sums
+    alias_method :sums_sql, :watch_sql
+
+    # The observable relation the totals region watches: per-column sums, ordered
+    # by column. #by_column executes it for the server render.
+    def sums
+      cells.group(:col).order(:col).select("col, SUM(value) AS total")
     end
 
-    # { col => sum }, ordered by column.
     def by_column
-      relation.group(:col).order(:col).sum(:value)
+      sums.each_with_object({}) { |row, out| out[row["col"].to_i] = decimal(row["total"]) }
+    end
+
+    # The grand total: a second observable read (the host-mode patch and the JSON
+    # convergence check). COALESCE keeps an empty sheet at 0 rather than NULL.
+    def grand_total_relation
+      cells.select(Arel.sql("COALESCE(SUM(value), 0) AS total"))
     end
 
     def grand_total
-      relation.sum(:value)
+      decimal(grand_total_relation.take["total"])
     end
 
-    # The same per-column sums as SQL for the browser to watch as a live query.
-    def sums_sql
-      relation.group(:col).order(:col).select("col, SUM(value) AS total").to_sql
-    end
-
-    # The grand total as SQL; COALESCE so an empty sheet returns 0, not NULL.
     def total_sql
-      relation.select("COALESCE(SUM(value), 0) AS total").to_sql
-    end
-
-    private
-
-    def relation
-      Cell.for_sheet(@sheet.id)
+      grand_total_relation.to_sql
     end
   end
 end

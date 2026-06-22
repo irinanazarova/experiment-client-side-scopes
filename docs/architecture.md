@@ -48,14 +48,22 @@ writes server": it physically cannot sync a write upward.
 
 A reactive system needs to know *when* data changed, *which* fragments depend on
 it, and *how* to patch. We get the first two from the database: a `LiveRegion`
-binds an ERB partial to the SQL it depends on, and a PGlite live query on that
-SQL tells us precisely when that fragment is stale. Declared and named, like
-`ClientScope`:
+binds an ERB partial to the query it observes, and a PGlite live query on that
+query tells us precisely when that fragment is stale. The query is an
+`ApplicationQuery` that declares its observable relation; the SQL the browser
+watches is derived from that relation (`to_sql`), never written alongside it, so
+the server render and the browser's live query cannot drift. Declared and named,
+like `ClientScope`:
 
 ```ruby
+class Cells::ColumnAggregates < ApplicationQuery
+  observable_by :sums   # #watch_sql is sums.to_sql, derived from the relation
+  def sums = cells.group(:col).order(:col).select("col, SUM(value) AS total")
+end
+
 LiveRegion.register :totals,
   partial: "sheets/totals",
-  watch:   ->(sheet) { Cells::ColumnAggregates.new(sheet).sums_sql },
+  query:   ->(sheet) { Cells::ColumnAggregates.new(sheet) },
   locals:  ->(sheet) { {sheet:, sums: Cells::ColumnAggregates.new(sheet).by_column, ...} }
 ```
 
