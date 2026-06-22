@@ -1,4 +1,4 @@
-<% content_for :title, "#{@sheet.name} — Hotwire (coarse server-push)" %>
+<% content_for :title, "#{@sheet.name} — Hotwire (server-push)" %>
 <% content_for :head do %>
   <%# Opt the page into morphing refreshes: broadcast_refresh re-fetches and
       morphs, so the table updates in place without losing scroll. %>
@@ -7,47 +7,64 @@
   <%= action_cable_meta_tag %>
 <% end %>
 
-<%# Consumer: subscribe this page to the data-change topic. The same relation
+<%# Consumer: subscribe this page to the relation's stream. The same relation
     the writer publishes to (DataChange.topic), so they rendezvous on the string
     without naming each other. This one tag is the whole consumer surface. %>
 <%= turbo_stream_from DataChange.topic(Cell.for_sheet(@sheet.id)) %>
 <%= render "sheets/grid_styles" %>
+<style>
+  .ss-btn { border-radius: .375rem; padding: .5rem 1rem; font-size: .875rem; font-weight: 600; color: #fff; border: 0; cursor: pointer; }
+  .ss-btn-amber { background: #f59e0b; } .ss-btn-amber:hover { background: #d97706; }
+  .ss-btn-emerald { background: #059669; } .ss-btn-emerald:hover { background: #047857; }
+  .ss-cell { cursor: text; }
+</style>
 
 <div class="w-full max-w-[92rem] mx-auto">
   <header class="mb-4">
     <h1 class="text-2xl font-bold"><%= @sheet.name %></h1>
     <p class="text-sm text-gray-500">
-      Coarse, server-push (Hotwire). A write posts to Rails; on commit the server
-      publishes a refresh to <code class="text-xs"><%= DataChange.topic(Cell.for_sheet(@sheet.id)) %></code>
+      Server-push (plain Hotwire). Click a cell to edit it, apply to a column, or
+      simulate a server write; each posts to Rails, which writes and publishes a
+      refresh to <code class="text-xs"><%= DataChange.topic(Cell.for_sheet(@sheet.id)) %></code>,
       and every open tab morphs. No local database, no client SQL.
     </p>
   </header>
 
-  <%= form_with url: sheet_hotwire_path(@sheet), method: :post,
-        class: "mb-4 p-3 rounded-lg border bg-white flex items-end gap-3 flex-wrap" do |f| %>
-    <label class="text-sm">Column
-      <%= f.number_field :column, value: 3, min: 1, max: @sheet.col_count,
-            autocomplete: "off", class: "block border rounded px-2 py-1 w-20" %>
-    </label>
-    <label class="text-sm">Operation
-      <%= f.select :operation,
-            [["add +", "add"], ["multiply ×", "multiply"], ["set =", "set"]],
-            {}, class: "block border rounded px-2 py-1" %>
-    </label>
-    <label class="text-sm">Operand
-      <%= f.number_field :operand, value: 100, step: 1,
-            autocomplete: "off", class: "block border rounded px-2 py-1 w-24" %>
-    </label>
-    <%= f.submit "Apply to whole column",
-          class: "text-white bg-amber-500 hover:bg-amber-600 rounded px-4 py-2 text-sm font-medium" %>
-  <% end %>
+  <div class="mb-4 flex items-end gap-3 flex-wrap">
+    <%= form_with url: sheet_hotwire_path(@sheet), method: :post,
+          class: "p-3 rounded-lg border bg-white flex items-end gap-3 flex-wrap" do |f| %>
+      <label class="text-sm">Column
+        <%= f.number_field :column, value: 3, min: 1, max: @sheet.col_count,
+              autocomplete: "off", class: "block border rounded px-2 py-1 w-20" %>
+      </label>
+      <label class="text-sm">Operation
+        <%= f.select :operation,
+              [["add +", "add"], ["multiply ×", "multiply"], ["set =", "set"]],
+              {}, class: "block border rounded px-2 py-1" %>
+      </label>
+      <label class="text-sm">Operand
+        <%= f.number_field :operand, value: 100, step: 1,
+              autocomplete: "off", class: "block border rounded px-2 py-1 w-24" %>
+      </label>
+      <%= f.submit "Apply to whole column", class: "ss-btn ss-btn-amber" %>
+    <% end %>
+
+    <%# A server-originated write: the page morphs in a change you did not make,
+        the server-push payoff. %>
+    <%= button_to "Simulate a server write", sheet_hotwire_tick_path(@sheet),
+          class: "ss-btn ss-btn-emerald" %>
+  </div>
 
   <section class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
     <%= render "sheets/stats", stats: @stats %>
   </section>
 
   <div class="ss-wrap">
-    <table class="ss" id="grid">
+    <%# Click a cell to edit (cell_edit_controller): the edit POSTs a single-cell
+        write, and the refresh broadcast morphs the value back in. %>
+    <table class="ss" id="grid"
+           data-controller="cell-edit"
+           data-cell-edit-url-value="<%= sheet_hotwire_cell_path(@sheet) %>">
       <thead>
         <tr>
           <th class="ss-corner">#</th>
@@ -64,7 +81,7 @@
 
   <p class="text-xs text-gray-400 mt-2">
     Showing rows 1–<%= @row_limit %> of <%= number_with_delimiter(@sheet.row_count) %>.
-    Open this page in two tabs and apply a change: both morph together over the
-    Turbo refresh, no per-fragment wiring.
+    Open this page in two tabs: a change in one morphs into both over the Turbo
+    refresh, with no per-fragment wiring.
   </p>
 </div>

@@ -22,6 +22,11 @@ Rails.application.routes.draw do
   # makes the slice return a clean 404 instead of rendering a page that 500s on
   # the missing assets.
   unless Rails.env.wasm?
+    # Action Cable carries the Turbo refresh broadcasts for /hotwire. Mounted
+    # explicitly (host-only; the slice has no cable server) because the engine is
+    # required conditionally, so the railtie does not auto-mount it.
+    mount ActionCable.server => "/cable"
+
     get "wasm" => "wasm#show"
     get "wasm_ar" => "wasm#ar"
 
@@ -29,6 +34,8 @@ Rails.application.routes.draw do
     # Host-only; it needs Action Cable, which the slice does not load.
     get "sheets/:sheet_id/hotwire" => "sheets/hotwire#show", as: :sheet_hotwire
     post "sheets/:sheet_id/hotwire" => "sheets/hotwire#update"
+    post "sheets/:sheet_id/hotwire/cell" => "sheets/hotwire#update_cell", as: :sheet_hotwire_cell
+    post "sheets/:sheet_id/hotwire/tick" => "sheets/hotwire#tick", as: :sheet_hotwire_tick
   end
 
   # The browser asks for a named client-side scope -> gets an Electric Shape config.

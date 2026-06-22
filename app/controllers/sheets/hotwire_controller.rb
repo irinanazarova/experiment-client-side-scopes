@@ -1,13 +1,13 @@
 # frozen_string_literal: true
 
 module Sheets
-  # The coarse, server-push comparison route. A plain Hotwire spreadsheet: no
-  # PGlite, no Electric. A write posts to Rails; on commit we publish a refresh
-  # to the data-change topic, and every subscribed tab morphs. The consumer is a
-  # Turbo Stream subscription to DataChange.topic(relation); the trigger is
-  # coarse (any cell change in the sheet wakes the page) and a morphing refresh
-  # keeps that affordable. Contrast with the local-first routes, which read from
-  # a client replica and never round-trip.
+  # The server-push comparison route. A plain Hotwire spreadsheet: no PGlite, no
+  # Electric. A write posts to Rails; on commit we publish a refresh to the
+  # relation's stream, and every subscribed tab morphs. The consumer streams from
+  # the whole sheet's cells (turbo_stream_from DataChange.topic(relation)), so any
+  # change to them refreshes the page, and a morphing re-render keeps that fine.
+  # Contrast with the local-first routes, which read from a client replica and
+  # never round-trip.
   class HotwireController < ApplicationController
     protect_from_forgery with: :null_session
 
@@ -32,6 +32,32 @@ module Sheets
       # producer names no partial and no DOM id, only the data topic.
       Turbo::StreamsChannel.broadcast_refresh_to(DataChange.topic(cells_scope))
       redirect_to sheet_hotwire_path(@sheet)
+    end
+
+    # Inline cell edit: a single-cell "set", through the same authorized write
+    # path as everything else. We answer 204 and let the refresh broadcast morph
+    # the page, so the edit lands the same way a remote one does.
+    def update_cell
+      @sheet = Sheet.find(params[:sheet_id])
+      row = Integer(params[:row])
+      col = Integer(params[:col])
+      region = Cells::Region.new(sheet_id: @sheet.id, row_from: row, row_to: row, col_from: col, col_to: col)
+      transform = Cells::Transform.new(operation: :set, operand: params[:value])
+      Cells::BulkUpdate.new(user: current_user, region:, transform:).call
+
+      Turbo::StreamsChannel.broadcast_refresh_to(DataChange.topic(cells_scope))
+      head :no_content
+    end
+
+    # Simulate a server-originated write (the "server activity" of the other
+    # demos): one random visible cell changes on the server, the page refreshes.
+    # This is the server-push payoff, a change you did not make appears live.
+    def tick
+      @sheet = Sheet.find(params[:sheet_id])
+      Cells::RandomTick.new(@sheet, user: current_user).call
+
+      Turbo::StreamsChannel.broadcast_refresh_to(DataChange.topic(cells_scope))
+      head :no_content
     end
 
     private

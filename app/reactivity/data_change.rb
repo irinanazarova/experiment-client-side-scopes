@@ -17,10 +17,10 @@
 module DataChange
   module_function
 
-  # A stable topic for a relation. Only equality conditions reduce to a topic;
-  # that is the coarse-by-default contract (a writer touching any row in the
-  # slice wakes every subscriber to it, and a cheap morphing re-render keeps that
-  # affordable). Relations with ranges or joins fall back to the table topic.
+  # A stable stream name for a relation. Only equality conditions reduce to a
+  # name: a writer touching any row in the slice wakes every subscriber to it,
+  # and a cheap morphing re-render keeps that fine. Relations with ranges or
+  # joins fall back to the table-level name.
   def topic(relation)
     conditions = relation.where_values_hash.sort.map { |key, value| "#{key}=#{value}" }
     [relation.klass.table_name, *conditions].join("/")
