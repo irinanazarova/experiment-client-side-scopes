@@ -14,6 +14,32 @@ class SheetsController < ApplicationController
     @grid = grid_locals(@sheet)
   end
 
+  # The coarse local-first variant. One Turbo Frame holds the whole grid; the
+  # page watches a single change signal (Cells::ChangeSignal, DataChange.topic
+  # over the whole relation) as a local live query and reloads the frame when it
+  # fires. The reload reads server Postgres on the host and the in-browser
+  # replica in the slice build: same frame, same endpoint, the data source is
+  # the only thing that changes. The reload IS the frame fetching this very
+  # action again (Turbo extracts the matching frame from the response).
+  def coarse
+    @sheet = Sheet.find(params[:id])
+    @signal = Cells::ChangeSignal.new(@sheet)
+    @stats = Cells::SheetStats.new(@sheet).compute
+    @sums = Cells::ColumnAggregates.new(@sheet).by_column
+    @values = Cells::GridWindow.new(@sheet).values
+
+    # A reload only needs the frame, so render it alone (no layout, no page
+    # chrome): Turbo extracts the matching frame from the response either way.
+    # The aggregates still re-run on every change, which is the coarse strategy's
+    # cost, made plain in the route's latency readout.
+    return unless turbo_frame_request?
+
+    render partial: "sheets/coarse_grid", locals: {
+      sheet: @sheet, signal: @signal, stats: @stats, sums: @sums,
+      values: @values, row_limit: Cells::GridWindow::DEFAULT_LIMIT
+    }
+  end
+
   # The grid fragment: the same partial the first paint uses, re-rendered on
   # demand. In the Wasm build this action runs in the tab, so a replica
   # change becomes ActionView output morphed into the DOM. HTML over a

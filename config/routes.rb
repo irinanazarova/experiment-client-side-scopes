@@ -7,6 +7,12 @@ Rails.application.routes.draw do
   resources :sheets, only: [:show] do
     get :aggregates, on: :member
     get :grid, on: :member
+    # The coarse local-first variant: the whole grid in one Turbo Frame,
+    # reloaded when a single local change signal (DataChange.topic over the whole
+    # relation) fires. The "as simple as Hotwire" receiver: a stock turbo-frame
+    # and one trigger. Compare with /hotwire (same whole-grid reload, pushed from
+    # the server) and the precise route (per-fragment live regions).
+    get :coarse, on: :member
     # Named reactive regions: a live-query fire re-fetches one of these and
     # morphs just its element. Served by the in-VM Rails in the slice build.
     resources :regions, only: [:show], module: :sheets
