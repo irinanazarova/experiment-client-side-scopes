@@ -10,8 +10,7 @@
 // server Postgres (a round trip); in the slice build the same frame reloads
 // from the in-tab Rails reading the local replica (zero network). Same code.
 
-import { Idiomorph } from "https://cdn.jsdelivr.net/npm/idiomorph@0.7.4/+esm";
-import { snapshotCells, flashChanged, morphOptions } from "/blink.mjs";
+import { mountReactiveFrame } from "/reactive_frame.mjs";
 
 const app = document.getElementById("sheet-app");
 const cfg = app.dataset;
@@ -46,69 +45,21 @@ const classify = (key) => {
 
 let editing = false; // a cell editor is open; a reload must not clobber it
 
-// --- The reactive trigger: one signal -> reload the frame ------------------
-// A reload is the frame re-fetching its own URL. Setting `.src` the first time
-// kicks the fetch; `.reload()` re-runs it thereafter. We snapshot the grid
-// before the morph and flash the cells whose value changed after it.
-let pendingSnapshot = null;
-let reloadStartedAt = 0;
-
-frame.addEventListener("turbo:before-frame-render", (event) => {
-  // Never let a reload land while a cell editor is open: cancel this render and
-  // re-arm, so the refresh happens the moment the edit closes.
-  if (editing) { event.preventDefault(); reloadPending = true; return; }
-  pendingSnapshot = snapshotCells(frame);
-  // Morph in place instead of replacing, so scroll position survives and the
-  // flash diff has stable nodes to compare. Same swap the live regions use.
-  event.detail.render = (currentElement, newElement) =>
-    Idiomorph.morph(currentElement, newElement.innerHTML, morphOptions);
+// The receiver: one Turbo Frame, reloaded + morphed when the trigger fires. The
+// readout names the cost and whose change it was (the flash origin tells them
+// apart). Debounced because the initial snapshot streams in and a column apply
+// lands many rows at once.
+const reactor = mountReactiveFrame(frame, {
+  classify,
+  isEditing: () => editing,
+  debounceMs: 250,
+  onRender: (ms, origin) => {
+    const tally = (origin?.local ?? 0) + (origin?.remote ?? 0);
+    $("timing").textContent = tally
+      ? `signal fired → frame reloaded in ${ms} ms (${origin.local ? "your edit" : "server change"})`
+      : `frame reloaded in ${ms} ms`;
+  },
 });
-frame.addEventListener("turbo:frame-render", () => {
-  const ms = Math.round(performance.now() - reloadStartedAt);
-  if (!pendingSnapshot) return;
-  const origin = flashChanged(frame, pendingSnapshot, classify);
-  pendingSnapshot = null;
-  const tally = origin.local + origin.remote;
-  $("timing").textContent = tally
-    ? `signal fired → frame reloaded in ${ms} ms (${origin.local ? "your edit" : "server change"})`
-    : `frame reloaded in ${ms} ms`;
-});
-
-// Coalesce + serialize reloads. The signal fires in bursts: the initial Electric
-// snapshot streams in chunks, and a column apply lands many rows at once. A
-// trailing debounce collapses a burst into one reload (so the grid settles once,
-// not dozens of times), and the pump serializes them so overlapping Turbo frame
-// navigations can't cancel each other. The first reload sets src to kick the
-// fetch; reload() re-runs it after.
-const RELOAD_DEBOUNCE_MS = 250;
-let reloadPending = false;
-let pumping = false;
-let reloadTimer = null;
-const requestReload = () => {
-  reloadPending = true;
-  clearTimeout(reloadTimer);
-  reloadTimer = setTimeout(pump, RELOAD_DEBOUNCE_MS);
-};
-
-async function pump() {
-  if (pumping) return;
-  pumping = true;
-  try {
-    while (reloadPending && !editing) {
-      reloadPending = false;
-      reloadStartedAt = performance.now(); // measure the reload itself (fetch + morph)
-      const rendered = new Promise((resolve) =>
-        frame.addEventListener("turbo:frame-render", resolve, { once: true })
-      );
-      if (frame.src) frame.reload();
-      else frame.src = frame.dataset.reloadUrl;
-      // Bound the wait so a dropped or cancelled render can't wedge the pump.
-      await Promise.race([rendered, new Promise((r) => setTimeout(r, 6000))]);
-    }
-  } finally {
-    pumping = false;
-  }
-}
 
 async function boot() {
   wireServerActivity();
@@ -127,7 +78,7 @@ async function boot() {
       setStatus("Live. The whole grid is one Turbo Frame; any cell change reloads it.", "text-green-600");
       return;
     }
-    requestReload();
+    reactor.requestReload();
   });
 }
 
@@ -194,7 +145,7 @@ function wireCellEdit() {
     input.select();
 
     // Closing the editor flushes any reload that arrived while it was open.
-    const close = () => { editing = false; pump(); };
+    const close = () => { editing = false; reactor.flush(); };
     const cancel = () => { td.textContent = original; close(); };
     const commit = async () => {
       const val = parseFloat(input.value);

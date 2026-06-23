@@ -9,70 +9,31 @@
 // worker drops them and nothing re-renders until we re-announce. We heartbeat
 // the worker and, if it can't confirm it is watching, show a Resume button.
 
-import { Idiomorph } from "https://cdn.jsdelivr.net/npm/idiomorph@0.7.4/+esm";
-import { snapshotCells, flashChanged, morphOptions } from "/blink.mjs";
+import { mountReactiveFrame } from "/reactive_frame.mjs";
 
 export const REGION_CHANNEL = "cells-region";
 
 // Watch the grid frame's change signal in the worker and reload the frame when
-// it fires. `classify` colours the flash (local vs remote); `onRender` reports
-// the render. Returns false if there is no controlling worker (caller falls back).
+// it fires. The reload + morph + flash is the shared reactive frame; the worker
+// is just the trigger source here. `classify`/`isEditing`/`onRender` pass
+// through. Returns the reactor, or false if there is no controlling worker.
 export function mountGridFrameViaWorker(frame, { classify, onRender, isEditing } = {}) {
-  const worker = navigator.serviceWorker?.controller;
-  if (!worker) return false;
+  if (!navigator.serviceWorker?.controller) return false;
 
-  const signal = { name: "grid", watch: frame.dataset.signalSql };
   const announce = () =>
-    navigator.serviceWorker?.controller?.postMessage({ type: "watch-regions", regions: [signal] });
+    navigator.serviceWorker?.controller?.postMessage({
+      type: "watch-regions",
+      regions: [{ name: "grid", watch: frame.dataset.signalSql }],
+    });
   announce();
 
-  // Morph in place so scroll position and the flash diff survive; skip the morph
-  // while a cell editor is open so a reload can't wipe it.
-  let pendingSnapshot = null;
-  let reloadStartedAt = 0;
-  frame.addEventListener("turbo:before-frame-render", (event) => {
-    if (isEditing?.()) { event.preventDefault(); reloadPending = true; return; }
-    pendingSnapshot = classify ? snapshotCells(frame) : null;
-    event.detail.render = (current, next) => Idiomorph.morph(current, next.innerHTML, morphOptions);
-  });
-  frame.addEventListener("turbo:frame-render", () => {
-    const ms = Math.round(performance.now() - reloadStartedAt);
-    const origin = pendingSnapshot ? flashChanged(frame, pendingSnapshot, classify) : null;
-    pendingSnapshot = null;
-    onRender?.(ms, origin);
-  });
-
-  // Serialize reloads: the worker can broadcast in bursts, and overlapping Turbo
-  // frame navigations cancel each other. A broadcast only marks the frame dirty;
-  // one pump reloads it, looping if more arrive mid-load.
-  let reloadPending = false;
-  let pumping = false;
-  const requestReload = () => { reloadPending = true; pump(); };
-  async function pump() {
-    if (pumping) return;
-    pumping = true;
-    try {
-      while (reloadPending && !isEditing?.()) {
-        reloadPending = false;
-        reloadStartedAt = performance.now();
-        const rendered = new Promise((resolve) =>
-          frame.addEventListener("turbo:frame-render", resolve, { once: true })
-        );
-        if (frame.src) frame.reload();
-        else frame.src = frame.dataset.reloadUrl;
-        await Promise.race([rendered, new Promise((r) => setTimeout(r, 6000))]);
-      }
-    } finally {
-      pumping = false;
-    }
-  }
-
+  const reactor = mountReactiveFrame(frame, { classify, isEditing, onRender, debounceMs: 250 });
   new BroadcastChannel(REGION_CHANNEL).onmessage = (e) => {
-    if (e.data?.name === "grid") requestReload();
+    if (e.data?.name === "grid") reactor.requestReload();
   };
 
   mountWatcherLiveness(announce);
-  return { requestReload, flush: pump };
+  return reactor;
 }
 
 // --- Watcher liveness --------------------------------------------------------
