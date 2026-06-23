@@ -16,33 +16,85 @@
 # is a sync/transport concern, so the domain model stays a plain Active Record
 # class with plain scopes. `define` derives everything else from the scope:
 #   - params         the scope lambda's own parameters, coerced to Integer (ids)
-#   - model          read off the relation the scope returns (no DB at boot)
+#   - model          read off the relation the scope returns
 #   - electric_where read back from the relation's own conditions
 #                    (where_values_hash), so the filter cannot drift from the relation
 #   - via / subject  the belongs_to whose foreign key the scope filters on
 #                    (sheet_id -> :sheet); pass via: to override when ambiguous
-#   - authorize      defaults to :sync?; fail loudly at boot if that policy rule
-#                    is not defined, so a scope is never shipped without a gate
+#   - authorize      defaults to :sync?; the policy rule is checked the first time
+#                    the scope is used, so a scope is never shipped without a gate
+#
+# Everything that needs the model (its associations, the policy subject, the
+# column list) resolves LAZILY on first use, never at declaration time: building
+# a relation reads the table schema, so resolving at boot would require a
+# database connection, and the app must boot without one (asset precompile and
+# the wasm pack do exactly that).
 class ClientScope
   class UnknownScope < KeyError; end
 
-  Definition = Data.define(
-    :name, :model, :payload_columns, :policy_action,
-    :relation_builder, :electric_where_builder, :subject_builder
-  ) do
-    def relation(params) = relation_builder.call(params)
-    def electric_where(params) = electric_where_builder.call(params)
-    def subject(params) = subject_builder.call(params)
+  # One registered scope. Stores the raw declaration; the model and the pieces
+  # derived from it resolve once, memoized, on first use.
+  class Definition
+    attr_reader :name, :policy_action
 
-    # The full column allow-list shipped to the client: the declared payload plus
-    # the primary key, resolved lazily so declaring a scope never connects at boot.
+    def initialize(name:, scope:, ship:, authorize:, via:)
+      @name = name
+      @scope = scope
+      @ship = ship.map(&:to_sym)
+      @policy_action = authorize
+      @via = via
+      @param_keys = scope.parameters.filter_map { |type, key| key if %i[req keyreq].include?(type) }
+      @keyword = scope.parameters.any? { |type, _| type == :keyreq }
+    end
+
+    # The server relation for these params, with ids coerced to Integer (the one
+    # place request strings become the trusted filter values).
+    def relation(params)
+      values = @param_keys.index_with { |key| Integer(params.fetch(key)) }
+      @keyword ? @scope.call(**values) : @scope.call(*values.values)
+    end
+
+    # The Electric filter, read back out of the relation's own conditions so it
+    # cannot drift from what the scope actually selects.
+    def electric_where(params)
+      relation(params).where_values_hash.symbolize_keys.transform_values { Integer(it) }
+    end
+
+    # The record the policy authorizes against (the scope's belongs_to parent).
+    def subject(params)
+      reflection.klass.find(Integer(params.fetch(reflection.foreign_key.to_sym)))
+    end
+
+    # The full column allow-list shipped to the client: the primary key, the
+    # scoping foreign key, and the declared payload.
     def columns
-      ([model.primary_key.to_sym] + payload_columns).uniq
+      ([model.primary_key.to_sym, reflection.foreign_key.to_sym] + @ship).uniq
     end
 
     # The Electric Shape this scope authorizes, derived entirely server-side.
     def shape_definition(params)
       Electric::ShapeDefinition.new(table: model.table_name, columns:, where: electric_where(params))
+    end
+
+    # The model the scope returns. Reading the relation's klass builds a relation,
+    # which touches the schema, so this is resolved lazily (never at boot).
+    def model
+      @model ||= relation(@param_keys.index_with { 0 }).klass
+    end
+
+    private
+
+    # The belongs_to the scope filters on, resolved once. Asserting the policy
+    # rule here (rather than at declaration) keeps boot database-free while still
+    # failing loudly the first time an unguarded scope is used.
+    def reflection
+      @reflection ||= begin
+        via = @via || ClientScope.derive_via(model, @param_keys)
+        association = model.reflect_on_association(via) ||
+          raise(ArgumentError, "client_scope #{@name}: no association #{via.inspect} on #{model}")
+        ClientScope.assert_policy_rule!(@name, association.klass, @policy_action)
+        association
+      end
     end
   end
 
@@ -57,41 +109,10 @@ class ClientScope
   #     scope: ->(sheet_id) { Cell.for_sheet(sheet_id) },
   #     ship: %i[row col value formula]
   def self.define(name, scope:, ship:, authorize: :sync?, via: nil)
-    param_keys = scope.parameters.filter_map { |type, key| key if %i[req keyreq].include?(type) }
-    keyword = scope.parameters.any? { |type, _| type == :keyreq }
-    coerce = ->(params) { param_keys.index_with { |key| Integer(params.fetch(key)) } }
-    relation = lambda do |params|
-      values = coerce.call(params)
-      keyword ? scope.call(**values) : scope.call(*values.values)
-    end
-
-    # The model is whatever the scope returns; read it without touching the DB.
-    model = relation.call(param_keys.index_with { 0 }).klass
-
-    via ||= derive_via(model, param_keys)
-    reflection = model.reflect_on_association(via) ||
-      raise(ArgumentError, "client_scope #{name}: no association #{via.inspect} on #{model}")
-
-    assert_policy_rule!(name, reflection.klass, authorize)
-
-    register(
-      name,
-      model: model,
-      # Payload columns + the scoping foreign key (both known without the DB); the
-      # primary key is prepended lazily in Definition#columns.
-      payload_columns: ([reflection.foreign_key] + ship).map(&:to_sym).uniq,
-      policy_action: authorize,
-      relation: relation,
-      electric_where: ->(params) { relation.call(params).where_values_hash.symbolize_keys.transform_values { Integer(it) } },
-      subject: ->(params) { reflection.klass.find(Integer(params.fetch(reflection.foreign_key.to_sym))) }
-    )
-  end
-
-  def self.register(name, model:, payload_columns:, policy_action:, relation:, electric_where:, subject:)
     key = name.to_sym
     raise ArgumentError, "client scope #{key} already registered" if REGISTRY.key?(key)
 
-    REGISTRY[key] = Definition.new(key, model, payload_columns, policy_action, relation, electric_where, subject)
+    REGISTRY[key] = Definition.new(name: key, scope:, ship:, authorize:, via:)
   end
 
   def self.fetch(name)
@@ -115,7 +136,7 @@ class ClientScope
     end
   end
 
-  # Fail at boot if the rule that guards replication is not defined, so a scope is
+  # Fail loudly if the rule that guards replication is not defined, so a scope is
   # never silently shipped without an authorization gate. (If a policy expresses
   # the rule via alias_rule rather than a method, pass authorize: explicitly.)
   def self.assert_policy_rule!(name, subject_klass, rule)
