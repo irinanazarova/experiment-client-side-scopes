@@ -15,7 +15,7 @@ module Sheets
     # endpoints answer 422 (the client reverts and flags it); the column-apply
     # form just re-renders unchanged.
     rescue_from ActiveRecord::RangeError do
-      action_name == "update" ? redirect_to(sheet_hotwire_path(@sheet)) : head(:unprocessable_content)
+      (action_name == "update") ? redirect_to(sheet_hotwire_path(@sheet)) : head(:unprocessable_content)
     end
 
     def show

@@ -62,7 +62,7 @@ namespace :reactive do
 
     puts "\nSheet ##{sheet.id}: #{sheet.cells.count} cells (#{sheet.row_count}×#{sheet.col_count})\n\n"
     puts "Per-fragment render cost (server-side: query objects + ActionView):"
-    puts format("  %-8s %8s %10s %10s", "fragment", "queries", "ms", "bytes")
+    puts "  fragment  queries         ms      bytes"
     measured.each { |name, m| puts format("  %-8s %8d %10.1f %10d", name, m[:queries], m[:ms], m[:bytes]) }
     puts format("  %-8s %8d %10.1f %10d", "WHOLE", whole[:queries], whole[:ms], whole[:bytes])
 
