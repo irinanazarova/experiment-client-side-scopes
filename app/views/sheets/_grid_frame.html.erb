@@ -1,0 +1,46 @@
+<%# The reactive receiver: ONE Turbo Frame holding the whole grid (the stats
+    panel, the Σ totals row, the rows). When the local change signal fires, the
+    frame is reloaded and morphed in place. Morphing is what makes one frame
+    enough: a re-render of the whole grid patches only the cells that actually
+    changed, so an edit outside the visible window resettles the aggregates and
+    leaves the grid-body nodes untouched, with no per-fragment machinery.
+
+    The stats panel sits inside the frame but outside the <table> (a <turbo-frame>
+    cannot live inside a <table>), so the frame wraps both. The same partials
+    render here, on first paint and on every reload.
+
+    refresh="morph" makes a reload morph the frame rather than replace it, so
+    scroll position and the flash diff survive. reload_url is where the frame
+    re-fetches itself: server Postgres on the host, the in-tab Rails reading the
+    local replica in the slice build. %>
+<turbo-frame id="sheet-grid" refresh="morph"
+             data-signal-sql="<%= signal.sql %>"
+             data-reload-url="<%= reload_url %>">
+  <section id="sheet-stats" class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+    <%= render "sheets/stats", stats: stats %>
+  </section>
+
+  <div class="ss-wrap">
+    <table class="ss" id="grid">
+      <thead id="grid-head">
+        <tr>
+          <th class="ss-corner">#</th>
+          <th class="ss-rowmax">Max</th>
+          <% (1..sheet.col_count).each do |col| %>
+            <th>C<%= col %></th>
+          <% end %>
+        </tr>
+      </thead>
+      <tbody id="grid-totals">
+        <%= render "sheets/totals", sheet: sheet, sums: sums, stats: stats %>
+      </tbody>
+      <tbody id="grid-body">
+        <%= render "sheets/rows", sheet: sheet, row_limit: row_limit, values: values %>
+      </tbody>
+    </table>
+  </div>
+  <p class="text-xs text-gray-400 mt-2" id="grid-note">
+    Showing rows 1–<%= row_limit %> of <%= number_with_delimiter(sheet.row_count) %>.
+    The whole grid is one frame; any cell change reloads it and morphs in the diff.
+  </p>
+</turbo-frame>

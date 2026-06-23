@@ -176,25 +176,25 @@ function wireRejectToggle() {
 // ---------------------------------------------------------------------------
 async function bootSlice() {
   flow.mode("slice — Rails in the browser");
-  const { mountLiveRegionsViaWorker } = await import("/live.mjs");
+  const frame = document.getElementById("sheet-grid");
+  const { mountGridFrameViaWorker } = await import("/live.mjs");
 
-  mountLiveRegionsViaWorker({
+  // One frame, one signal: the worker watches the change signal and we reload the
+  // frame (in-tab Rails renders it from the replica) and morph the diff in. The
+  // origin tally drives the flow trace (your edit lights the loop, a change from
+  // elsewhere lights the push path).
+  const reactor = mountGridFrameViaWorker(frame, {
     classify,
-    onRender: (name, ms, origin) => {
-      if (editing && name === "rows") return; // don't fight an open editor
-      $("timing").textContent = `ActionView re-render in-tab (${name}): ${ms} ms (no network)`;
-      // Only the grid carries per-cell origin, so only it drives the flow
-      // diagrams (onto loop/local for your edit, push for a change from
-      // elsewhere). The aggregate regions (stats / Σ) re-render on the same
-      // tick but can't tell origin apart, so they stay out of the trace to keep
-      // each diagram honest about which path a change actually took.
-      if (name === "rows") routeGridRender(origin, ms);
+    isEditing: () => editing,
+    onRender: (ms, origin) => {
+      $("timing").textContent = `ActionView re-render in-tab: ${ms} ms (no network)`;
+      routeGridRender(origin, ms);
     },
   });
 
   wireBulkEdit(null);
-  wireCellEdit(null);
-  setStatus("Live. Each region (stats, Σ row, grid) is rendered by ActionView in this tab, from the local replica.", "text-green-600");
+  wireCellEdit(null, () => reactor?.flush()); // flush a reload deferred during the edit
+  setStatus("Live. The grid is rendered by ActionView in this tab, from the local replica.", "text-green-600");
 }
 
 // ---------------------------------------------------------------------------

@@ -16,19 +16,23 @@ RSpec.describe "Sheets", type: :request do
       get sheet_path(sheet)
       expect(response).to have_http_status(:ok)
       expect(response.body).to include("data-sums-sql")
+      # one Turbo Frame holds the whole grid, watching the change signal
+      expect(response.body).to include('<turbo-frame id="sheet-grid"')
+      expect(response.body).to include("data-signal-sql")
     end
   end
 
   describe "GET /sheets/:id/grid" do
-    it "renders the live region fragment: stats, Σ row, Max column, cells" do
+    it "re-renders the grid frame: stats, Σ row, Max column, cells (no layout)" do
       get grid_sheet_path(sheet)
 
       expect(response).to have_http_status(:ok)
+      expect(response.body).to include('<turbo-frame id="sheet-grid"')
       expect(response.body).to include('id="sheet-stats"')
       expect(response.body).to include('id="stat-median"')
       expect(response.body).to include('class="ss-rowmax"')
       expect(response.body).to include('data-row="1" data-col="1"')
-      # no layout: this is a morph fragment
+      # no layout: this is a morph target Turbo extracts
       expect(response.body).not_to include("<html")
     end
   end

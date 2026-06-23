@@ -52,9 +52,10 @@
     <span id="timing" class="text-xs text-gray-400 w-full text-right"></span>
   </section>
 
-  <%= render "sheets/coarse_grid",
+  <%= render "sheets/grid_frame",
         sheet: @sheet, signal: @signal, stats: @stats, sums: @sums,
-        values: @values, row_limit: Cells::GridWindow::DEFAULT_LIMIT %>
+        values: @values, row_limit: Cells::GridWindow::DEFAULT_LIMIT,
+        reload_url: coarse_sheet_path(@sheet) %>
 </div>
 
 <%= render "sheets/grid_styles" %>

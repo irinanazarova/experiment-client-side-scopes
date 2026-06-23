@@ -1,114 +1,85 @@
-// Live regions, the browser half. Each [data-live-region] element carries the
-// SQL it depends on (data-watch). We hand those queries to whoever owns the
-// replica, register them as PGlite live queries, and when one fires we
-// re-fetch just that region (rendered by the in-VM Rails) and morph its node.
+// The slice's reactive bridge. In the slice build the PGlite replica lives in
+// the service worker; the in-tab Rails renders the grid frame from it. We hand
+// the worker the frame's change signal (one cheap query over the relation), and
+// when the worker says the signal moved, we reload the frame: Turbo fetches it
+// from the in-tab Rails and we morph the diff in. One frame, one signal, no
+// per-region machinery.
 //
-// The live query is the dependency graph: a region re-renders exactly when its
-// result set changes, and no other region moves. An edit outside the visible
-// window resettles the aggregates while the grid body stays put.
+// Plus a liveness banner: the watchers run in the worker's memory, so an evicted
+// worker drops them and nothing re-renders until we re-announce. We heartbeat
+// the worker and, if it can't confirm it is watching, show a Resume button.
 
 import { Idiomorph } from "https://cdn.jsdelivr.net/npm/idiomorph@0.7.4/+esm";
 import { snapshotCells, flashChanged, morphOptions } from "/blink.mjs";
 
 export const REGION_CHANNEL = "cells-region";
 
-const regionsInDom = () =>
-  [...document.querySelectorAll("[data-live-region]")].map((el) => ({
-    name: el.dataset.liveRegion,
-    sheetId: el.dataset.sheetId,
-    watch: el.dataset.watch,
-    el,
-  }));
-
-// Slice mode: the replica lives in the service worker. Send it the watch
-// queries; it broadcasts a region name when one fires; we re-fetch + morph.
-// Returns false if there is no controlling worker (caller falls back).
-export function mountLiveRegionsViaWorker({ onRender, classify } = {}) {
+// Watch the grid frame's change signal in the worker and reload the frame when
+// it fires. `classify` colours the flash (local vs remote); `onRender` reports
+// the render. Returns false if there is no controlling worker (caller falls back).
+export function mountGridFrameViaWorker(frame, { classify, onRender, isEditing } = {}) {
   const worker = navigator.serviceWorker?.controller;
   if (!worker) return false;
 
-  const regions = regionsInDom();
-  const byName = Object.fromEntries(regions.map((r) => [r.name, r]));
+  const signal = { name: "grid", watch: frame.dataset.signalSql };
+  const announce = () =>
+    navigator.serviceWorker?.controller?.postMessage({ type: "watch-regions", regions: [signal] });
+  announce();
 
-  worker.postMessage({
-    type: "watch-regions",
-    regions: regions.map(({ name, watch }) => ({ name, watch })),
+  // Morph in place so scroll position and the flash diff survive; skip the morph
+  // while a cell editor is open so a reload can't wipe it.
+  let pendingSnapshot = null;
+  let reloadStartedAt = 0;
+  frame.addEventListener("turbo:before-frame-render", (event) => {
+    if (isEditing?.()) { event.preventDefault(); reloadPending = true; return; }
+    pendingSnapshot = classify ? snapshotCells(frame) : null;
+    event.detail.render = (current, next) => Idiomorph.morph(current, next.innerHTML, morphOptions);
+  });
+  frame.addEventListener("turbo:frame-render", () => {
+    const ms = Math.round(performance.now() - reloadStartedAt);
+    const origin = pendingSnapshot ? flashChanged(frame, pendingSnapshot, classify) : null;
+    pendingSnapshot = null;
+    onRender?.(ms, origin);
   });
 
-  // ONE render at a time, globally. Every render is a request into the
-  // single-threaded in-VM Rails; firing the three regions (rows + stats + Σ)
-  // concurrently on each change made the VM juggle three ActionView renders at
-  // once through asyncify, tripling peak allocation and, under sustained server
-  // activity, growing its heap until it trapped. So we serialize: a broadcast
-  // only marks its region dirty, and a single pump renders dirty regions one by
-  // one, coalescing repeats (a Set dedups), until none remain.
-  const dirty = new Set();
+  // Serialize reloads: the worker can broadcast in bursts, and overlapping Turbo
+  // frame navigations cancel each other. A broadcast only marks the frame dirty;
+  // one pump reloads it, looping if more arrive mid-load.
+  let reloadPending = false;
   let pumping = false;
-  let failures = 0;
-
-  const renderOne = async (region) => {
-    const t0 = performance.now();
-    const res = await fetch(`/sheets/${region.sheetId}/regions/${region.name}`);
-    if (!res.ok) throw new Error(`region ${region.name} → ${res.status}`);
-    const html = await res.text();
-    const before = classify ? snapshotCells(region.el) : null;
-    Idiomorph.morph(region.el, html, morphOptions);
-    const origin = before ? flashChanged(region.el, before, classify) : null;
-    onRender?.(region.name, Math.round(performance.now() - t0), origin);
-  };
-
-  const pump = async () => {
+  const requestReload = () => { reloadPending = true; pump(); };
+  async function pump() {
     if (pumping) return;
     pumping = true;
     try {
-      while (dirty.size) {
-        const name = dirty.values().next().value;
-        dirty.delete(name);
-        const region = byName[name];
-        if (!region) continue;
-        try {
-          await renderOne(region);
-          failures = 0;
-        } catch (e) {
-          // A failed fetch means the in-VM Rails is unresponsive (most likely
-          // it trapped). Don't let it throw uncaught; after a short run of
-          // failures, ask the worker to rebuild the VM so the app self-heals
-          // instead of freezing for good.
-          console.warn("[live] region render failed:", name, e);
-          if (++failures >= 6) {
-            failures = 0;
-            dirty.clear();
-            navigator.serviceWorker.controller?.postMessage({ type: "reload-rails" });
-            break;
-          }
-        }
+      while (reloadPending && !isEditing?.()) {
+        reloadPending = false;
+        reloadStartedAt = performance.now();
+        const rendered = new Promise((resolve) =>
+          frame.addEventListener("turbo:frame-render", resolve, { once: true })
+        );
+        if (frame.src) frame.reload();
+        else frame.src = frame.dataset.reloadUrl;
+        await Promise.race([rendered, new Promise((r) => setTimeout(r, 6000))]);
       }
     } finally {
       pumping = false;
     }
-  };
+  }
 
   new BroadcastChannel(REGION_CHANNEL).onmessage = (e) => {
-    const name = e.data?.name;
-    if (byName[name]) {
-      dirty.add(name);
-      pump();
-    }
+    if (e.data?.name === "grid") requestReload();
   };
 
-  // --- Watcher liveness ------------------------------------------------------
-  // The live-query watchers run in the service worker's memory. The browser
-  // evicts an idle worker and drops them; after that nothing re-renders until we
-  // re-announce. Heartbeat the worker — if it can't confirm it is watching, show
-  // a hint + a Resume button that re-announces the regions (the worker re-syncs
-  // the replica and re-registers the queries). The ping itself also nudges the
-  // worker awake, so an active tab tends to stay live.
-  const announce = () =>
-    navigator.serviceWorker?.controller?.postMessage({
-      type: "watch-regions",
-      regions: regions.map(({ name, watch }) => ({ name, watch })),
-    });
+  mountWatcherLiveness(announce);
+  return { requestReload, flush: pump };
+}
 
+// --- Watcher liveness --------------------------------------------------------
+// The browser evicts an idle worker and drops its live-query watchers. Heartbeat
+// it; if it can't confirm it is watching, show a hint + a Resume button that
+// re-announces (the worker re-syncs the replica and re-registers the queries).
+function mountWatcherLiveness(announce) {
   const isWatching = () =>
     new Promise((resolve) => {
       const sw = navigator.serviceWorker?.controller;
@@ -125,7 +96,7 @@ export function mountLiveRegionsViaWorker({ onRender, classify } = {}) {
   banner.onResume(async () => {
     reconnecting = true;
     banner.reconnecting();
-    announce(); // worker re-syncs the replica + re-registers the live queries
+    announce(); // worker re-syncs the replica + re-registers the live query
     for (let i = 0; i < 30; i++) {
       await new Promise((r) => setTimeout(r, 1000));
       if (await isWatching()) { reconnecting = false; return banner.hide(); }
@@ -140,12 +111,10 @@ export function mountLiveRegionsViaWorker({ onRender, classify } = {}) {
     if (await isWatching()) { misses = 0; banner.hide(); }
     else if (++misses >= 2) banner.down(); // two misses (~20s) so a busy render isn't a false alarm
   }, 10000);
-
-  return true;
 }
 
-// A small fixed toast: "Live updates paused — Resume". Created hidden; shown
-// only when the worker can't confirm its watchers are alive.
+// A small fixed toast: "Live updates paused — Resume". Created hidden; shown only
+// when the worker can't confirm its watchers are alive.
 function makeWakeBanner() {
   const el = document.createElement("div");
   el.style.cssText =
@@ -175,21 +144,4 @@ function makeWakeBanner() {
     failed() { set("Couldn't reconnect.", "Try again", false, "#ef4444"); },
     hide() { el.style.display = "none"; },
   };
-}
-
-// Standalone mode: the page owns the PGlite instance. Register each region's
-// watch query directly and re-render in JS-free fashion by fetching the
-// (host-rendered) fragment. Used only when the caller opts in; the host demo
-// keeps its richer JS renderers, so this is mainly for symmetry/testing.
-export function mountLiveRegionsViaPg(pg, { onRender } = {}) {
-  for (const region of regionsInDom()) {
-    let first = true;
-    pg.live.query(region.watch, [], async () => {
-      if (first) { first = false; return; }
-      const t0 = performance.now();
-      const html = await fetch(`/sheets/${region.sheetId}/regions/${region.name}`).then((r) => r.text());
-      Idiomorph.morph(region.el, html, { morphStyle: "innerHTML" });
-      onRender?.(region.name, Math.round(performance.now() - t0));
-    });
-  }
 }

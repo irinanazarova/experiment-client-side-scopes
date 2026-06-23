@@ -6,16 +6,14 @@ Rails.application.routes.draw do
   # grid: the ActionView fragment the slice page morphs in on replica changes.
   resources :sheets, only: [:show] do
     get :aggregates, on: :member
+    # grid: the precise route's reload endpoint. The whole grid is one Turbo
+    # Frame; a local change signal reloads it and morphs the diff in. Served by
+    # the in-VM Rails in the slice build, reading the local replica.
     get :grid, on: :member
-    # The coarse local-first variant: the whole grid in one Turbo Frame,
-    # reloaded when a single local change signal (DataChange.topic over the whole
-    # relation) fires. The "as simple as Hotwire" receiver: a stock turbo-frame
-    # and one trigger. Compare with /hotwire (same whole-grid reload, pushed from
-    # the server) and the precise route (per-fragment live regions).
+    # coarse: the same one-frame receiver, reloaded wholesale on any change (the
+    # "as simple as Hotwire" variant). Compare with /hotwire (the same whole-grid
+    # reload pushed from the server over Action Cable).
     get :coarse, on: :member
-    # Named reactive regions: a live-query fire re-fetches one of these and
-    # morphs just its element. Served by the in-VM Rails in the slice build.
-    resources :regions, only: [:show], module: :sheets
   end
 
   # Phase B / B+ demos: Ruby in the browser (ruby.wasm) querying the local
