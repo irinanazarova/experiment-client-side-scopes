@@ -21,17 +21,21 @@ module Cells
     end
 
     # The grand total: a second observable read (the host-mode patch and the JSON
-    # convergence check). COALESCE keeps an empty sheet at 0 rather than NULL.
-    def grand_total_relation
-      cells.select(Arel.sql("COALESCE(SUM(value), 0) AS total"))
-    end
-
+    # convergence check). #grand_total executes it; #total_sql is the same
+    # relation the browser watches.
     def grand_total
       decimal(grand_total_relation.take["total"])
     end
 
     def total_sql
       grand_total_relation.to_sql
+    end
+
+    private
+
+    # COALESCE keeps an empty sheet at 0 rather than NULL.
+    def grand_total_relation
+      cells.select(Arel.sql("COALESCE(SUM(value), 0) AS total"))
     end
   end
 end

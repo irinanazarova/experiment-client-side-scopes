@@ -163,8 +163,9 @@ function wireCellEdit() {
   });
 }
 
-// "Server activity": post one tick a second. Each commits server-side and
-// streams to every replica, so it lands as a green flash on the next reload.
+// "Server activity": post one tick every couple of seconds. Each commits
+// server-side and streams to every replica, so it lands as a green flash on
+// the next reload.
 const TICK_INTERVAL_MS = 2000;
 function wireServerActivity() {
   const btn = $("server-activity-btn");

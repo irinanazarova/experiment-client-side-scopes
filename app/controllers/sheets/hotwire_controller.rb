@@ -10,6 +10,7 @@ module Sheets
   # never round-trip.
   class HotwireController < ApplicationController
     protect_from_forgery with: :null_session
+    before_action :load_sheet
 
     # A value past the cell's numeric range should not 500 the write. The cell
     # endpoints answer 422 (the client reverts and flags it); the column-apply
@@ -19,12 +20,10 @@ module Sheets
     end
 
     def show
-      @sheet = Sheet.find(params[:sheet_id])
       load_grid
     end
 
     def update
-      @sheet = Sheet.find(params[:sheet_id])
       column = Integer(params[:column])
       region = Cells::Region.new(
         sheet_id: @sheet.id,
@@ -45,7 +44,6 @@ module Sheets
     # path as everything else. We answer 204 and let the refresh broadcast morph
     # the page, so the edit lands the same way a remote one does.
     def update_cell
-      @sheet = Sheet.find(params[:sheet_id])
       row = Integer(params[:row])
       col = Integer(params[:col])
       region = Cells::Region.new(sheet_id: @sheet.id, row_from: row, row_to: row, col_from: col, col_to: col)
@@ -60,7 +58,6 @@ module Sheets
     # demos): one random visible cell changes on the server, the page refreshes.
     # This is the server-push payoff, a change you did not make appears live.
     def tick
-      @sheet = Sheet.find(params[:sheet_id])
       Cells::RandomTick.new(@sheet, user: current_user).call
 
       Turbo::StreamsChannel.broadcast_refresh_to(topic)
@@ -68,6 +65,10 @@ module Sheets
     end
 
     private
+
+    def load_sheet
+      @sheet = Sheet.find(params[:sheet_id])
+    end
 
     def cells_scope
       Cell.for_sheet(@sheet.id)

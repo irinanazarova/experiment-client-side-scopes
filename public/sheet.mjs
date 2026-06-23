@@ -431,14 +431,23 @@ function wireCellEdit(pg, afterCommit) {
     input.focus();
     input.select();
 
+    // Closing the editor replaces the cell's content, which removes the focused
+    // input and fires its blur handler. Guard so Enter (or Escape) doesn't then
+    // re-enter through that blur and fire a second write — or, after a cancel,
+    // commit the cell at all.
+    let done = false;
     const cancel = () => {
+      if (done) return;
+      done = true;
       td.textContent = original;
       editing = false;
       afterCommit?.();
     };
     const commit = async () => {
+      if (done) return;
       const val = parseFloat(input.value);
       if (Number.isNaN(val)) return cancel();
+      done = true;
       td.textContent = fmt(val); // optimistic display; the replica repaints on change
       editing = false;
       await applyBulk(pg, { col, operation: "set", operand: val, rowFrom: row, rowTo: row });

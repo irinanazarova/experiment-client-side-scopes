@@ -2,11 +2,11 @@
 
 module Electric
   # Infrastructure layer. Typed configuration for the Electric sync service.
-  # Sources (in order): ENV (ELECTRIC_URL, ELECTRIC_INSECURE, ELECTRIC_PROXIED,
-  # ELECTRIC_SECRET), config/electric.yml, credentials.
+  # Sources (in order): ENV (ELECTRIC_URL, ELECTRIC_PROXIED, ELECTRIC_SECRET),
+  # config/electric.yml, credentials.
   #
-  # Two postures:
-  # - insecure (local POC): Electric runs open and the browser hits it
+  # `proxied` selects between the two postures:
+  # - direct (local POC): Electric runs open and the browser hits it
   #   directly; Rails only authorizes issuing the shape config.
   # - proxied (production): Electric stays private behind ELECTRIC_SECRET and
   #   the browser fetches shapes same-origin through Electric::ProxiesController,
@@ -16,11 +16,10 @@ module Electric
 
     attr_config(
       url: "http://localhost:3010",
-      insecure: true,
       proxied: false,
       secret: nil
     )
 
-    coerce_types insecure: :boolean, proxied: :boolean
+    coerce_types proxied: :boolean
   end
 end
