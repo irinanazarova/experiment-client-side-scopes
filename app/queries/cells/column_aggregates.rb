@@ -8,11 +8,10 @@ module Cells
   # are the same relations as strings the browser watches. Mirrors how GridWindow
   # pairs #values and #watch_sql.
   class ColumnAggregates < ApplicationQuery
-    observable_by :sums
-    alias_method :sums_sql, :watch_sql
+    observable_by :sums, as: :sums_sql
 
-    # The observable relation the totals region watches: per-column sums, ordered
-    # by column. #by_column executes it for the server render.
+    # The observable relation the Σ row watches: per-column sums, ordered by
+    # column. #by_column executes it for the server render.
     def sums
       cells.group(:col).order(:col).select("col, SUM(value) AS total")
     end

@@ -13,7 +13,6 @@ module Cells
   # trips the sum). One row, no per-cell streaming, so it is cheap to watch.
   class ChangeSignal < ApplicationQuery
     observable_by :signal
-    alias_method :sql, :watch_sql
 
     # The observable relation: the whole sheet reduced to one signature row.
     def signal

@@ -14,7 +14,6 @@ module Cells
     Stats = Data.define(:max, :min, :avg, :median)
 
     observable_by :summary
-    alias_method :sql, :watch_sql
 
     # The observable relation: the four header statistics as one aggregate row.
     def summary

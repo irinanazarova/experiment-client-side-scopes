@@ -178,7 +178,7 @@ function wireRejectToggle() {
 async function bootSlice() {
   flow.mode("slice — Rails in the browser");
   const frame = document.getElementById("sheet-grid");
-  const { mountGridFrameViaWorker } = await import("/live.mjs");
+  const { mountGridFrameViaWorker } = await import("/slice_frame.mjs");
 
   // One frame, one signal: the worker watches the change signal and we reload the
   // frame (in-tab Rails renders it from the replica) and morph the diff in. The

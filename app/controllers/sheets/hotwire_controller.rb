@@ -37,7 +37,7 @@ module Sheets
       # The whole new surface on the producer side: announce that this slice
       # changed. broadcast_refresh_to is Turbo 8's content-free refresh, so the
       # producer names no partial and no DOM id, only the data topic.
-      Turbo::StreamsChannel.broadcast_refresh_to(DataChange.topic(cells_scope))
+      Turbo::StreamsChannel.broadcast_refresh_to(topic)
       redirect_to sheet_hotwire_path(@sheet)
     end
 
@@ -52,7 +52,7 @@ module Sheets
       transform = Cells::Transform.new(operation: :set, operand: params[:value])
       Cells::BulkUpdate.new(user: current_user, region:, transform:).call
 
-      Turbo::StreamsChannel.broadcast_refresh_to(DataChange.topic(cells_scope))
+      Turbo::StreamsChannel.broadcast_refresh_to(topic)
       head :no_content
     end
 
@@ -63,7 +63,7 @@ module Sheets
       @sheet = Sheet.find(params[:sheet_id])
       Cells::RandomTick.new(@sheet, user: current_user).call
 
-      Turbo::StreamsChannel.broadcast_refresh_to(DataChange.topic(cells_scope))
+      Turbo::StreamsChannel.broadcast_refresh_to(topic)
       head :no_content
     end
 
@@ -73,7 +73,15 @@ module Sheets
       Cell.for_sheet(@sheet.id)
     end
 
+    # The data topic both halves rendezvous on: the producer broadcasts to it,
+    # the page subscribes via turbo_stream_from. Derived from the relation once,
+    # so producer and subscriber cannot name different streams.
+    def topic
+      DataChange.topic(cells_scope)
+    end
+
     def load_grid
+      @topic = topic
       @stats = Cells::SheetStats.new(@sheet).compute
       @sums = Cells::ColumnAggregates.new(@sheet).by_column
       @values = Cells::GridWindow.new(@sheet).values

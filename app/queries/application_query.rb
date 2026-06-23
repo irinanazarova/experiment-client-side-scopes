@@ -17,9 +17,12 @@
 # replication filter is likewise read back out of the relation.
 class ApplicationQuery
   # Declare the relation whose result set is this query's reactivity signature.
-  # Defines #watch_sql, the live query the client replica observes.
-  def self.observable_by(relation_method)
+  # Defines #watch_sql (the live query the client replica observes) and exposes
+  # it under the query's public name (`as:`, default #sql), so the watch-SQL
+  # surface is named here in one place rather than re-aliased in every subclass.
+  def self.observable_by(relation_method, as: :sql)
     define_method(:watch_sql) { public_send(relation_method).to_sql }
+    alias_method(as, :watch_sql)
   end
 
   def initialize(sheet)

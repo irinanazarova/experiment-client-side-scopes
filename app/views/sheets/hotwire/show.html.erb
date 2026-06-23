@@ -13,7 +13,7 @@
     alive across morphs; without it every refresh re-subscribes and drops the
     broadcast that arrives during the reconnect. %>
 <div id="cable-source" data-turbo-permanent>
-  <%= turbo_stream_from DataChange.topic(Cell.for_sheet(@sheet.id)) %>
+  <%= turbo_stream_from @topic %>
 </div>
 <%= render "sheets/grid_styles" %>
 <style>
@@ -41,7 +41,7 @@
     <p class="text-sm text-gray-500">
       Server-push (plain Hotwire). Click a cell to edit it, apply to a column, or
       turn on server activity; each posts to Rails, which writes and publishes a
-      refresh to <code class="text-xs"><%= DataChange.topic(Cell.for_sheet(@sheet.id)) %></code>,
+      refresh to <code class="text-xs"><%= @topic %></code>,
       and every open tab morphs. No local database, no client SQL.
     </p>
   </header>
