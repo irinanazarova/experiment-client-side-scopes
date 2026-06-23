@@ -10,6 +10,7 @@ import {
 } from "./vendor/wasmify-rails/index.js";
 
 import { setupPGliteDatabase } from "./database.js";
+import { regionUpdate } from "./sw_regions.js";
 
 // Build stamp (injected by Vite). Its only job is to change this file's bytes
 // on every deploy so the browser detects a worker update and re-installs.
@@ -127,9 +128,12 @@ async function optimisticWrite(request) {
   const body = await request.clone().text();
   const params = new URLSearchParams(body);
 
-  // Snapshot the affected cells now (quick SELECT), for rollback.
+  // Snapshot the affected cells now (quick SELECT), for rollback. An evicted-and-
+  // restarted worker can receive a write before boot completes, so ensure the
+  // replica exists first, or a rejected write could not be rolled back.
   let snapshot = [];
   try {
+    if (!db) await initDB();
     snapshot = (
       await db.query(
         `SELECT id, value FROM cells
@@ -263,16 +267,18 @@ let regionsWatched = false;
 async function watchRegions(regions) {
   if (regionsWatched) return; // idempotent: the page may re-announce on reload
   if (!db) await initDB();
-  regionsWatched = true;
 
   for (const { name, watch } of regions) {
     let last; // undefined until the first (baseline) fire
     await db.live.query(watch, [], (result) => {
-      const signature = JSON.stringify(result.rows);
-      if (signature === last) return; // table changed, this result did not
-      const baseline = last === undefined;
+      const { signature, broadcast } = regionUpdate(last, result.rows);
       last = signature;
-      if (!baseline) regionChannel.postMessage({ name }); // first paint is already rendered
+      if (broadcast) regionChannel.postMessage({ name });
     });
   }
+
+  // Latch only after every subscription is registered, so a mid-loop failure
+  // leaves the flag false and the page's re-announce can retry, rather than
+  // ping-watchers reporting healthy with regions left unwatched.
+  regionsWatched = true;
 }
