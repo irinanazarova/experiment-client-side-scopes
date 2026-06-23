@@ -59,19 +59,19 @@ namespace :slice do
       if system("wasm-strip", wasm.to_s)
         puts "slice:pack stripped app.wasm custom sections: #{mb.(before)} MB -> #{mb.(wasm.size)} MB"
       else
-        warn "slice:pack: wasm-strip failed (exit #{$?.exitstatus}) — shipping unstripped app.wasm"
+        warn "slice:pack: wasm-strip failed (exit #{$?.exitstatus}); shipping unstripped app.wasm"
       end
     else
-      warn "slice:pack: wasm-strip not found (brew install wabt) — app.wasm ships ~19 MB larger"
+      warn "slice:pack: wasm-strip not found (brew install wabt); app.wasm ships ~19 MB larger"
     end
 
     # Safety net: prove the secret is not in the shipped artifact. grep runs in
     # this process (no secret is printed); a match aborts the build.
     key = Rails.root.join("config/master.key")
     if key.exist? && wasm.exist? && system("grep", "-aqf", key.to_s, wasm.to_s)
-      raise "SECURITY: master key bytes found in #{wasm} — refusing to ship."
+      raise "SECURITY: master key bytes found in #{wasm}; refusing to ship."
     end
 
-    puts "slice:pack OK — verified no master key in pwa/public/app.wasm"
+    puts "slice:pack OK: verified no master key in pwa/public/app.wasm"
   end
 end

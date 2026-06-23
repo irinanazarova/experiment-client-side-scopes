@@ -14,7 +14,7 @@
   <header class="mb-4">
     <h1 class="text-2xl font-bold"><%= @sheet.name %> <span class="text-base font-normal text-gray-400">· coarse local-first</span></h1>
     <p class="text-sm text-gray-500">
-      <%= number_with_delimiter(@sheet.cells.count) %> cells
+      <%= number_with_delimiter(@cell_count) %> cells
       (<%= @sheet.row_count %> × <%= @sheet.col_count %>) in a PGlite replica in your
       browser. The whole grid is <strong>one Turbo Frame</strong>; a single local
       change signal reloads it on any write. The simplest receiver: stock Hotwire,

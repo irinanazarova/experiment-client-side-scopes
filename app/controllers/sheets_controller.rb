@@ -16,6 +16,7 @@ class SheetsController < ApplicationController
 
   def show
     @sheet = Sheet.find(params[:id])
+    @cell_count = @sheet.cells.count
     # The query objects whose watch SQL the page bakes into data- attributes
     # (the host's local live queries) and whose server value first paint renders.
     @column_aggregates = Cells::ColumnAggregates.new(@sheet)
@@ -29,6 +30,7 @@ class SheetsController < ApplicationController
   # render the frame alone (no layout), and Turbo morphs it in.
   def coarse
     @sheet = Sheet.find(params[:id])
+    @cell_count = @sheet.cells.count
     assign_frame_ivars
     return unless turbo_frame_request?
 

@@ -100,7 +100,7 @@ function makeWakeBanner() {
   };
   return {
     onResume(fn) { btn.addEventListener("click", () => { if (!btn.disabled) fn(); }); },
-    down() { set("Live updates paused — the app went to sleep.", "Resume", false, "#f59e0b"); },
+    down() { set("Live updates paused. The app went to sleep.", "Resume", false, "#f59e0b"); },
     reconnecting() { set("Reconnecting…", "…", true, "#6366f1"); },
     failed() { set("Couldn't reconnect.", "Try again", false, "#ef4444"); },
     hide() { el.style.display = "none"; },

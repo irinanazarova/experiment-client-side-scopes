@@ -21,7 +21,7 @@
   <header class="mb-4">
     <h1 class="text-2xl font-bold"><%= @sheet.name %></h1>
     <p class="text-sm text-gray-500">
-      <%= number_with_delimiter(@sheet.cells.count) %> cells
+      <%= number_with_delimiter(@cell_count) %> cells
       (<%= @sheet.row_count %> × <%= @sheet.col_count %>) in a PGlite replica in your
       browser. The stats, the <strong>Max</strong> column and the <strong>Σ</strong> row
       are computed locally by SQL. Click a cell to edit; writes go to Rails and

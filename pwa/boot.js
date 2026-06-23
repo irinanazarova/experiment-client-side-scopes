@@ -1,7 +1,9 @@
 async function registerServiceWorker() {
   const oldRegistrations = await navigator.serviceWorker.getRegistrations();
   for (const registration of oldRegistrations) {
-    if (registration.installing.state === "installing") {
+    // `installing` is null unless a worker is mid-install (the common case is an
+    // already-active worker), so guard before reading .state or this throws.
+    if (registration.installing) {
       return;
     }
   }

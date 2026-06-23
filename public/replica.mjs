@@ -27,7 +27,12 @@ export async function bootReplica(cfg, onStatus = () => {}) {
   `);
 
   onStatus("Fetching authorized shape from Rails…");
-  const shape = await fetch(cfg.scopeUrl, { headers: { Accept: "application/json" } }).then((r) => r.json());
+  // Surface an authorization failure clearly: a 403 (the scope is not syncable)
+  // would otherwise throw an opaque JSON-parse error on the HTML error body, or
+  // feed a malformed shape into syncShapeToTable.
+  const res = await fetch(cfg.scopeUrl, { headers: { Accept: "application/json" } });
+  if (!res.ok) throw new Error(`shape fetch failed: ${res.status} ${res.statusText}`);
+  const shape = await res.json();
 
   onStatus("Syncing slice from Electric…");
   await pg.electric.syncShapeToTable({
