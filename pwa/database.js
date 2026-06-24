@@ -6,6 +6,7 @@
 import { PGlite } from "@electric-sql/pglite";
 import { live } from "@electric-sql/pglite/live";
 import { electricSync } from "@electric-sql/pglite-sync";
+import { waitForSnapshot } from "./snapshot.js";
 
 const SHEET_ID = 1;
 
@@ -32,9 +33,13 @@ export const setupPGliteDatabase = async (progress) => {
   // This fetch runs from the service worker itself, so it bypasses the fetch
   // handler and reaches the host Rails through the Vite dev proxy.
   progress?.updateStep("Fetching authorized shape from Rails...");
-  const shape = await fetch(`/client_scopes/sheet_cells?sheet_id=${SHEET_ID}`, {
+  const shapeRes = await fetch(`/client_scopes/sheet_cells?sheet_id=${SHEET_ID}`, {
     headers: { Accept: "application/json" },
-  }).then((r) => r.json());
+  });
+  // Surface an authorization/host failure clearly rather than parsing an HTML
+  // error body as JSON or feeding a malformed shape into syncShapeToTable.
+  if (!shapeRes.ok) throw new Error(`shape fetch failed: ${shapeRes.status}`);
+  const shape = await shapeRes.json();
 
   // Stream the slice in. PGlite is single-threaded, so a count(*) poller would
   // just queue behind the ingestion (no usable incremental signal), and
@@ -49,10 +54,15 @@ export const setupPGliteDatabase = async (progress) => {
   });
 
   // Wait for the initial snapshot so the first in-VM request sees data.
-  for (let i = 0; i < 80; i++) {
-    const r = await db.query("SELECT count(*)::int AS n FROM cells");
-    if (r.rows[0].n > 0) break;
-    await new Promise((res) => setTimeout(res, 250));
+  try {
+    await waitForSnapshot({
+      count: async () => (await db.query("SELECT count(*)::int AS n FROM cells")).rows[0].n,
+    });
+  } catch (error) {
+    // A stalled initial sync should be visible, but not fail the boot: the
+    // reactive path still fills the grid as Electric catches up.
+    progress?.updateStep("Initial sync is slow; continuing as cells arrive…");
+    console.warn("[rails-web]", error.message);
   }
 
   // Per-region change signals are set up on demand from the page's declared

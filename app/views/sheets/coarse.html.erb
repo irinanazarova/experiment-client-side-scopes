@@ -1,0 +1,71 @@
+<% content_for :title, "#{@sheet.name} — coarse local-first" %>
+
+<div class="w-full max-w-[92rem] mx-auto"
+     id="sheet-app"
+     data-sheet-id="<%= @sheet.id %>"
+     data-scope-url="<%= client_scope_path('sheet_cells', sheet_id: @sheet.id) %>"
+     data-bulk-url="<%= cells_bulk_updates_path %>"
+     data-ticks-url="<%= cells_ticks_path %>"
+     data-csrf="<%= form_authenticity_token %>"
+     data-row-count="<%= @sheet.row_count %>"
+     data-col-count="<%= @sheet.col_count %>"
+     data-row-limit="<%= Cells::GridWindow::DEFAULT_LIMIT %>">
+
+  <header class="mb-4">
+    <h1 class="text-2xl font-bold"><%= @sheet.name %> <span class="text-base font-normal text-gray-400">· coarse local-first</span></h1>
+    <p class="text-sm text-gray-500">
+      <%= number_with_delimiter(@cell_count) %> cells
+      (<%= @sheet.row_count %> × <%= @sheet.col_count %>) in a PGlite replica in your
+      browser. The whole grid is <strong>one Turbo Frame</strong>; a single local
+      change signal reloads it on any write. The simplest receiver: stock Hotwire,
+      one trigger. Click a cell to edit; writes go to Rails and reconcile through
+      Electric, then the frame reloads.
+    </p>
+    <p id="status" class="text-sm mt-1 text-amber-600">Booting local replica…</p>
+  </header>
+
+  <section class="mb-4 p-3 rounded-lg border bg-white flex items-end gap-3 flex-wrap">
+    <label class="text-sm">Column
+      <input id="op-col" type="number" value="3" min="1" max="<%= @sheet.col_count %>"
+             autocomplete="off" class="block border rounded px-2 py-1 w-20">
+    </label>
+    <label class="text-sm">Operation
+      <select id="op-kind" class="block border rounded px-2 py-1">
+        <option value="add" selected>add +</option>
+        <option value="multiply">multiply ×</option>
+        <option value="set">set =</option>
+      </select>
+    </label>
+    <label class="text-sm">Operand
+      <input id="op-operand" type="number" value="100" step="1"
+             autocomplete="off" class="block border rounded px-2 py-1 w-24">
+    </label>
+    <button id="apply-btn"
+            class="text-white rounded px-4 py-2 text-sm font-medium disabled:opacity-50">
+      Apply to whole column
+    </button>
+    <button id="server-activity-btn" type="button" role="switch" aria-checked="false"
+            class="ml-auto inline-flex items-center gap-2 rounded px-3 py-2 text-sm font-medium border border-emerald-600 text-emerald-700 hover:bg-emerald-50">
+      <span class="dot inline-block w-2 h-2 rounded-full bg-emerald-400"></span>
+      <span class="label">Server activity: off</span>
+    </button>
+    <span id="timing" class="text-xs text-gray-400 w-full text-right"></span>
+  </section>
+
+  <%= render "sheets/grid_frame",
+        sheet: @sheet, signal: @signal, stats: @stats, sums: @sums,
+        values: @values, row_limit: Cells::GridWindow::DEFAULT_LIMIT,
+        reload_url: coarse_sheet_path(@sheet) %>
+</div>
+
+<%= render "sheets/grid_styles" %>
+<style>
+  #apply-btn { background: #f59e0b; }
+  #apply-btn:hover:not(:disabled) { background: #d97706; }
+  #server-activity-btn.active { background: #059669; color: #fff; border-color: #059669; }
+  #server-activity-btn.active .dot { background: #fff; animation: pulse 1.1s ease-in-out infinite; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
+  .ss-cell input { width: 100%; box-sizing: border-box; text-align: right; border: 1px solid #6366f1; border-radius: 3px; padding: 1px 3px; font: inherit; }
+</style>
+
+<script type="module" src="/coarse.mjs"></script>

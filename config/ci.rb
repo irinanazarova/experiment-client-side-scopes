@@ -8,6 +8,7 @@ CI.run do
 
   step "Style: Ruby (Standard)", "bundle exec standardrb"
   step "Tests: RSpec", "bundle exec rspec"
+  step "Tests: Slice logic (node)", "npm --prefix pwa test"
 
 
   # Optional: set a green GitHub commit status to unblock PR merge.

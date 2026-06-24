@@ -1,4 +1,5 @@
-<%# Inner content of the :stats live region (watches SheetStats#sql). %>
+<%# The stats panel: whole-sheet aggregates (Cells::SheetStats). Rendered on
+    first paint and on every reload of the grid frame. %>
 <% {Max: stats.max, Min: stats.min, Average: stats.avg, Median: stats.median}.each do |label, value| %>
   <div class="p-3 rounded-lg border bg-white">
     <div class="text-[11px] uppercase tracking-wide text-gray-400"><%= label %></div>

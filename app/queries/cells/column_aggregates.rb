@@ -8,11 +8,10 @@ module Cells
   # are the same relations as strings the browser watches. Mirrors how GridWindow
   # pairs #values and #watch_sql.
   class ColumnAggregates < ApplicationQuery
-    observable_by :sums
-    alias_method :sums_sql, :watch_sql
+    observable_by :sums, as: :sums_sql
 
-    # The observable relation the totals region watches: per-column sums, ordered
-    # by column. #by_column executes it for the server render.
+    # The observable relation the Σ row watches: per-column sums, ordered by
+    # column. #by_column executes it for the server render.
     def sums
       cells.group(:col).order(:col).select("col, SUM(value) AS total")
     end
@@ -22,17 +21,21 @@ module Cells
     end
 
     # The grand total: a second observable read (the host-mode patch and the JSON
-    # convergence check). COALESCE keeps an empty sheet at 0 rather than NULL.
-    def grand_total_relation
-      cells.select(Arel.sql("COALESCE(SUM(value), 0) AS total"))
-    end
-
+    # convergence check). #grand_total executes it; #total_sql is the same
+    # relation the browser watches.
     def grand_total
       decimal(grand_total_relation.take["total"])
     end
 
     def total_sql
       grand_total_relation.to_sql
+    end
+
+    private
+
+    # COALESCE keeps an empty sheet at 0 rather than NULL.
+    def grand_total_relation
+      cells.select(Arel.sql("COALESCE(SUM(value), 0) AS total"))
     end
   end
 end

@@ -10,7 +10,7 @@
      data-csrf="<%= form_authenticity_token %>"
      data-row-count="<%= @sheet.row_count %>"
      data-col-count="<%= @sheet.col_count %>"
-     data-row-limit="<%= @grid[:row_limit] %>"
+     data-row-limit="<%= @row_limit %>"
      data-sums-sql="<%= @column_aggregates.sums_sql %>"
      data-grand-total-sql="<%= @column_aggregates.total_sql %>"
      data-stats-sql="<%= @sheet_stats.sql %>">
@@ -21,7 +21,7 @@
   <header class="mb-4">
     <h1 class="text-2xl font-bold"><%= @sheet.name %></h1>
     <p class="text-sm text-gray-500">
-      <%= number_with_delimiter(@sheet.cells.count) %> cells
+      <%= number_with_delimiter(@cell_count) %> cells
       (<%= @sheet.row_count %> × <%= @sheet.col_count %>) in a PGlite replica in your
       browser. The stats, the <strong>Max</strong> column and the <strong>Σ</strong> row
       are computed locally by SQL. Click a cell to edit; writes go to Rails and
@@ -33,6 +33,7 @@
   <section class="mb-4 p-3 rounded-lg border bg-white flex items-end gap-3 flex-wrap">
     <label class="text-sm">Column
       <input id="op-col" type="number" value="3" min="1" max="<%= @sheet.col_count %>"
+             autocomplete="off"
              class="block border rounded px-2 py-1 w-20">
     </label>
     <label class="text-sm">Operation
@@ -47,6 +48,7 @@
     </label>
     <label class="text-sm">Operand
       <input id="op-operand" type="number" value="100" step="1"
+             autocomplete="off"
              class="block border rounded px-2 py-1 w-24">
     </label>
     <%# Amber, the same colour as the local-edit flash: "your change" reads
@@ -72,12 +74,15 @@
     <span id="timing" class="text-xs text-gray-400 w-full text-right"></span>
   </section>
 
-  <%# The live region: first paint is server-rendered from real data (host:
-      server Postgres; Wasm build: the replica). The slice page morphs this
-      whole region with re-rendered fragments; host mode patches its parts
-      from PGlite live queries. %>
+  <%# The reactive receiver: one Turbo Frame for the whole grid. First paint is
+      server-rendered from real data (host: server Postgres; Wasm build: the
+      replica). On the host the page patches the frame's parts from its own
+      PGlite live queries (zero network); in the slice the frame reloads from the
+      in-tab Rails. Either way a change is morphed in, so only what changed moves. %>
   <div id="sheet-live">
-    <%= render "sheets/grid", **@grid %>
+    <%= render "sheets/grid_frame", sheet: @sheet, signal: @signal,
+          stats: @stats, sums: @sums, values: @values, row_limit: @row_limit,
+          reload_url: grid_sheet_path(@sheet) %>
   </div>
 
   </div><%# /main column %>

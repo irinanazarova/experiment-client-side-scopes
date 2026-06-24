@@ -15,7 +15,6 @@ module Cells
     DEFAULT_LIMIT = 25
 
     observable_by :window
-    alias_method :sql, :watch_sql
 
     def initialize(sheet, limit = DEFAULT_LIMIT)
       super(sheet)

@@ -1,0 +1,12 @@
+development:
+  adapter: async
+
+test:
+  adapter: test
+
+# async is in-process: fine for the single-machine /hotwire comparison demo.
+# A real multi-machine deploy would use solid_cable or redis here. Noting it is
+# part of the comparison: the server-push route needs a cable backend, where the
+# local-first routes need Electric.
+production:
+  adapter: async

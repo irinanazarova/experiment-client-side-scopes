@@ -1,16 +1,17 @@
-// Client-side scopes — the browser half of the loop, in two modes.
+// Client-side scopes — the browser half of the precise route, in two modes.
+// The grid is one Turbo Frame (app/views/sheets/_grid_frame.html.erb); both
+// modes keep its parts in sync from the local replica.
 //
 // Standalone (host :3000, Phase A): this page owns a PGlite replica synced by
-// Electric; live queries drive JS renderers that mirror the server partial's
-// markup; writes apply optimistically here, POST to Rails, reconcile.
+// Electric; per-fragment live queries drive JS renderers that mirror the server
+// partials and morph the frame's parts in place (zero network). Writes apply
+// optimistically here, POST to Rails, reconcile.
 //
 // Slice (served by Rails-in-the-browser, Phase C): the replica lives in the
-// service worker, where the in-VM Rails reads it. This page is thin Hotwire:
-// on a replica-change broadcast it fetches the ActionView-rendered fragment
-// (rendered in the tab, from the replica) and morphs it in. The optimistic
-// write runs in the worker as real application code (Cells::BulkUpdate).
-//
-// One markup contract (app/views/sheets/_grid.html.erb) serves both modes.
+// service worker, where the in-VM Rails reads it. A change-signal broadcast
+// reloads the frame (mountGridFrameViaWorker -> the shared reactive frame); the
+// in-tab Rails renders it from the replica and we morph the diff in. The
+// optimistic write runs in the worker as real application code (Cells::BulkUpdate).
 
 import { Idiomorph } from "https://cdn.jsdelivr.net/npm/idiomorph@0.7.4/+esm";
 import { mountFlowPanel, flowEmitter } from "/flow.mjs";
@@ -79,8 +80,8 @@ function routeGridRender(origin, ms) {
 // Auto-apply service-worker updates. The worker caches the booted app.wasm VM
 // in memory, so a redeploy only reaches a tab once a fresh worker installs and
 // claims it (skipWaiting + clients.claim in the SW). When that happens, reload
-// onto the new worker so page logic (e.g. live-region re-render) can't go
-// stale. Guarded against reload loops and the first-install claim.
+// onto the new worker so page logic (e.g. the frame reload) can't go stale.
+// Guarded against reload loops and the first-install claim.
 if (navigator.serviceWorker?.controller) {
   let reloading = false;
   navigator.serviceWorker.addEventListener("controllerchange", () => {
@@ -170,31 +171,31 @@ function wireRejectToggle() {
 }
 
 // ---------------------------------------------------------------------------
-// Slice mode: thin page over the worker's replica + in-tab ActionView, one
-// live region per data slice (stats / Σ row / grid window). Each re-renders
-// only when its own watch query fires.
+// Slice mode: thin page over the worker's replica + in-tab ActionView. The
+// worker watches the change signal and the grid frame reloads + morphs (the
+// shared reactive frame, fed by the worker instead of a local live query).
 // ---------------------------------------------------------------------------
 async function bootSlice() {
   flow.mode("slice — Rails in the browser");
-  const { mountLiveRegionsViaWorker } = await import("/live.mjs");
+  const frame = document.getElementById("sheet-grid");
+  const { mountGridFrameViaWorker } = await import("/slice_frame.mjs");
 
-  mountLiveRegionsViaWorker({
+  // One frame, one signal: the worker watches the change signal and we reload the
+  // frame (in-tab Rails renders it from the replica) and morph the diff in. The
+  // origin tally drives the flow trace (your edit lights the loop, a change from
+  // elsewhere lights the push path).
+  const reactor = mountGridFrameViaWorker(frame, {
     classify,
-    onRender: (name, ms, origin) => {
-      if (editing && name === "rows") return; // don't fight an open editor
-      $("timing").textContent = `ActionView re-render in-tab (${name}): ${ms} ms (no network)`;
-      // Only the grid carries per-cell origin, so only it drives the flow
-      // diagrams (onto loop/local for your edit, push for a change from
-      // elsewhere). The aggregate regions (stats / Σ) re-render on the same
-      // tick but can't tell origin apart, so they stay out of the trace to keep
-      // each diagram honest about which path a change actually took.
-      if (name === "rows") routeGridRender(origin, ms);
+    isEditing: () => editing,
+    onRender: (ms, origin) => {
+      $("timing").textContent = `ActionView re-render in-tab: ${ms} ms (no network)`;
+      routeGridRender(origin, ms);
     },
   });
 
   wireBulkEdit(null);
-  wireCellEdit(null);
-  setStatus("Live. Each region (stats, Σ row, grid) is rendered by ActionView in this tab, from the local replica.", "text-green-600");
+  wireCellEdit(null, () => reactor?.flush()); // flush a reload deferred during the edit
+  setStatus("Live. The grid is rendered by ActionView in this tab, from the local replica.", "text-green-600");
 }
 
 // ---------------------------------------------------------------------------
@@ -430,14 +431,23 @@ function wireCellEdit(pg, afterCommit) {
     input.focus();
     input.select();
 
+    // Closing the editor replaces the cell's content, which removes the focused
+    // input and fires its blur handler. Guard so Enter (or Escape) doesn't then
+    // re-enter through that blur and fire a second write — or, after a cancel,
+    // commit the cell at all.
+    let done = false;
     const cancel = () => {
+      if (done) return;
+      done = true;
       td.textContent = original;
       editing = false;
       afterCommit?.();
     };
     const commit = async () => {
+      if (done) return;
       const val = parseFloat(input.value);
       if (Number.isNaN(val)) return cancel();
+      done = true;
       td.textContent = fmt(val); // optimistic display; the replica repaints on change
       editing = false;
       await applyBulk(pg, { col, operation: "set", operand: val, rowFrom: row, rowTo: row });

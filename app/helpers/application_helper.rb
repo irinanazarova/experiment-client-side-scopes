@@ -17,20 +17,4 @@ module ApplicationHelper
     sign = int.negative? ? "-" : ""
     "#{sign}#{int.abs.to_s.reverse.gsub(/(\d{3})(?=\d)/, '\1,').reverse}"
   end
-
-  # Render a named reactive region: the region element carries the watch SQL
-  # (the browser runs it as a live query) and the first paint of its partial.
-  # When the live query fires, the JS runtime re-fetches the region and morphs
-  # just this element. See LiveRegion and public/live.mjs.
-  #
-  #   <%= live_region :totals, sheet: @sheet, tag: :tbody, id: "grid-totals" %>
-  def live_region(name, sheet:, tag: :div, **html)
-    region = ::LiveRegion.fetch(name)
-    data = (html.delete(:data) || {}).merge(
-      live_region: name, sheet_id: sheet.id, watch: region.watch_sql(sheet)
-    )
-    content_tag(tag, **html, data: data) do
-      render partial: region.partial, locals: region.locals(sheet)
-    end
-  end
 end
