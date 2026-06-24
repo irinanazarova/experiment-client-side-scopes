@@ -12,9 +12,14 @@
 //                                           forwards /client_scopes + /cells)
 // Run: node pwa/verify-slice.mjs
 //
-// NOTE: instantiating the ~52 MB app.wasm inside a headless service worker is
-// heavy; a cold boot can take a few minutes (real cold-start on a warm Chrome is
-// ~25 s). SLICE_BOOT_MS overrides the boot budget.
+// NOTE: in a Playwright-controlled Chrome (headless OR headed, with SW throttling
+// disabled), booting the slice wedges at WebAssembly.instantiate inside the
+// service worker. The module itself is fine (WebAssembly.compile of app.wasm is
+// ~20 ms in node), and main-thread ruby.wasm boots headlessly (see
+// pwa/verify wasm_ar). It is specifically instantiating the ~52 MB module in the
+// SW context here that stalls; a real browser cold-starts in ~25 s. So this
+// harness verifies the slice end-to-end only where the SW VM can boot (a normal
+// browser, or a heavier CI runner). SLICE_BOOT_MS tunes the boot budget.
 
 import { chromium } from "playwright-core";
 
