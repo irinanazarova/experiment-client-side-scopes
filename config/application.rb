@@ -32,6 +32,15 @@ module ClientSideScopes
     # Common ones are `templates`, `generators`, or `middleware`, for example.
     config.autoload_lib(ignore: %w[assets tasks])
 
+    # The slice (RAILS_ENV=wasm) does not load action_cable (no cable server, see
+    # the require above), but app/channels/* subclass ActionCable::*::Base, so
+    # eager-loading them there raises an uninitialized-constant NameError at boot.
+    # Keep the directory out of the autoloader in the wasm build; the host loads
+    # it normally for the /hotwire route.
+    if ENV["RAILS_ENV"] == "wasm"
+      Rails.autoloaders.main.ignore(Rails.root.join("app/channels"))
+    end
+
     # Configuration for the application, engines, and railties goes here.
     #
     # These settings can be overridden in specific environments using the files

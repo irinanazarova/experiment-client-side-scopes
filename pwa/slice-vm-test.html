@@ -1,0 +1,53 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>slice in-VM Rails test harness</title>
+  </head>
+  <body>
+    <!-- A test-only page that boots the packed app.wasm in the MAIN thread (not a
+         service worker) and mounts the same wasmify-rails RackHandler, so an
+         automated browser can dispatch requests into the in-VM Rails and check
+         what it renders. The production slice runs this in a service worker; the
+         in-VM Rails behaviour is identical, and the main thread boots headlessly
+         where the SW context wedges at WebAssembly.instantiate. See
+         pwa/verify-slice-vm.mjs. -->
+    <pre id="log">booting…</pre>
+    <script type="module">
+      import { initRailsVM, RackHandler, registerPGliteWasmInterface } from "/vendor/wasmify-rails/index.js";
+      import { setupPGliteDatabase } from "/database.js";
+
+      const logEl = document.getElementById("log");
+      const log = (m) => { logEl.textContent += "\n" + m; };
+      window.__status = "booting";
+
+      try {
+        const db = await setupPGliteDatabase({ updateStep: log });
+        registerPGliteWasmInterface(self, db);
+
+        const initVM = () =>
+          initRailsVM("/app.wasm?v=test", {
+            database: { adapter: "pglite" },
+            async: true,
+            env: ["PATH=/usr/local/bin:/usr/bin:/bin", "HOME=/rails"],
+            progressCallback: log,
+            outputCallback: () => {},
+          });
+
+        const rackHandler = new RackHandler(initVM, { assumeSSL: true, async: true });
+
+        // Dispatch a GET into the in-VM Rails and return status + body.
+        window.__dispatch = async (path) => {
+          const res = await rackHandler.handle(new Request(location.origin + path));
+          return { status: res.status, body: await res.text() };
+        };
+
+        window.__status = "ready";
+        log("READY");
+      } catch (e) {
+        window.__status = "error: " + (e && e.message ? e.message : String(e));
+        log("ERROR " + window.__status);
+      }
+    </script>
+  </body>
+</html>
