@@ -113,7 +113,7 @@ serves pages in the tab: real router, controllers, Active Record over the
 `pglite` adapter, ActionView. Reads come from the same Electric-synced
 replica.
 ```bash
-bin/rails slice:pack              # builds + strips pwa/public/app.wasm (~112 MB; slow the first time)
+bin/rails slice:pack              # packs + strips pwa/public/app.wasm (~52 MB raw, ~9 MB brotli; slow the first time)
 cd pwa && npm install && npm run dev
 ```
 Open `http://localhost:5173/boot.html` and wait for *"Service Worker Ready"*
@@ -127,14 +127,26 @@ Open `http://localhost:5173/boot.html` and wait for *"Service Worker Ready"*
 - Boot problems? `http://localhost:5173/debug.html` runs the identical stack
   in the page and prints every step and the failing backtrace.
 
-In this mode the page is thin Hotwire over one replica (the worker's),
-composed of **live regions**: the stats panel, the Σ row, and the grid body
-are each an ERB partial bound to the SQL it depends on. The worker runs that
-SQL as a PGlite live query and, when its result changes, names the region;
-the page re-fetches just that fragment (**rendered by ActionView in the tab**,
-no network) and morphs it. So an edit inside the visible window resettles all
-three regions, while an edit *outside* it resettles only the aggregates and
-leaves the grid body untouched, the live query is the dependency graph.
+In this mode the page is thin Hotwire over one replica (the worker's). The grid
+lives in a single **morphing `<turbo-frame>`** (stats panel + Σ row + grid body).
+The worker runs the `Cells::ChangeSignal` SQL as a PGlite live query, and when its
+result changes the frame reloads (**rendered by ActionView in the tab**, no
+network) and Turbo morphs the output in. Because a morph patches only the cells
+that actually changed, a whole-grid re-render is non-destructive: an edit outside
+the visible window resettles the aggregates and leaves the grid-body nodes
+untouched. The live query is the dependency graph; the morph is the patch.
+
+### The full slice, headless (production build)
+
+`pwa/verify-slice.mjs` drives this end to end against the production build, since
+the Vite dev-server service-worker shim wedges under Playwright:
+```bash
+bin/rails slice:pack
+cd pwa && npm run build && npm run preview &   # serves dist/ with the real /rails.sw.js
+node pwa/verify-slice.mjs                       # SW boots, /sheets/1 renders, an edit reconciles
+```
+`pwa/verify-slice-vm.mjs` is the narrower check: it boots `app.wasm` on the main
+thread and confirms the in-VM Rails renders the migrated grid (no service worker).
 
 The optimistic write is application code: the worker dispatches the same POST
 into the in-VM Rails first, so `Cells::BulkUpdate` runs locally against the

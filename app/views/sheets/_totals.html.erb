@@ -1,5 +1,5 @@
-<%# Inner content of the :totals live region (watches ColumnAggregates#sums_sql):
-    the Σ row, with the grand max under the Max column. %>
+<%# The Σ totals row: per-column sums (Cells::ColumnAggregates), with the grand
+    max under the Max column. %>
 <tr class="ss-totals">
   <td class="ss-corner">Σ</td>
   <td class="ss-rowmax"><%= cell_number(stats.max) %></td>

@@ -13,7 +13,9 @@ require "action_controller/railtie"
 # require "action_mailbox/engine"
 # require "action_text/engine"
 require "action_view/railtie"
-# require "action_cable/engine"
+# Host-only: the slice (RAILS_ENV=wasm) has no cable server, and loading the
+# engine there risks the in-VM boot. The /hotwire comparison route needs it.
+require "action_cable/engine" unless ENV["RAILS_ENV"] == "wasm"
 # require "rails/test_unit/railtie"
 
 # Require the gems listed in Gemfile, including any gems
@@ -29,6 +31,15 @@ module ClientSideScopes
     # not contain `.rb` files, or that should not be reloaded or eager loaded.
     # Common ones are `templates`, `generators`, or `middleware`, for example.
     config.autoload_lib(ignore: %w[assets tasks])
+
+    # The slice (RAILS_ENV=wasm) does not load action_cable (no cable server, see
+    # the require above), but app/channels/* subclass ActionCable::*::Base, so
+    # eager-loading them there raises an uninitialized-constant NameError at boot.
+    # Keep the directory out of the autoloader in the wasm build; the host loads
+    # it normally for the /hotwire route.
+    if ENV["RAILS_ENV"] == "wasm"
+      Rails.autoloaders.main.ignore(Rails.root.join("app/channels"))
+    end
 
     # Configuration for the application, engines, and railties goes here.
     #

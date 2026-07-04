@@ -15,7 +15,7 @@ write being the same `Cells::BulkUpdate` run locally against the replica.
 | Ruby-on-Wasm | ruby.wasm (`rbwasm` build); `wasmify-rails` 0.4.1 packs the full app and boots it in a service worker | exists |
 | Client DB | PGlite 0.4.6: Postgres in Wasm, live-query support | exists |
 | Sync | ElectricSQL: read-path, WAL-sourced Shapes into PGlite via `pglite-sync` | exists |
-| Reactive view | **Live regions**: an ERB partial bound to the SQL it depends on, re-rendered by ActionView in the tab on a PGlite live-query change | glue we built |
+| Reactive view | A stock **morphing `<turbo-frame>`** reloaded when a data-change trigger fires; the trigger is a PGlite live query on a change signal, the re-render runs in ActionView in the tab | glue we built |
 
 ## The design: named scope → authorized Electric Shape
 
@@ -24,11 +24,14 @@ The slice is the trust boundary, decided once and read across three layers:
 1. **Domain**: the scope is a real ActiveRecord scope (`Cell.for_sheet`). Named
    and server-defined. The client subscribes by name, never by an arbitrary
    query.
-2. **Application**: a model declares the slice with `client_scope`
-   (`ClientScopable`), reusing that scope. The Electric filter, the policy
-   subject, and the param coercion are *derived* from it: the filter is read
-   back from the relation, so it cannot drift. `SheetPolicy` authorizes the
-   subscriber and guards both reads (`:sync`) and writes (`:update`).
+2. **Application**: config declares the slice with `ClientScope.define`, off the
+   model (the model stays a plain Active Record class), reusing that scope. The
+   Electric filter, the policy subject, and the param coercion are *derived* from
+   it: the filter is read back from the relation, so it cannot drift. The model
+   and policy resolve lazily on first use, so declaring a scope never connects to
+   the database at boot (asset precompile and the wasm pack boot without one).
+   `SheetPolicy` authorizes the subscriber and guards both reads (`:sync`) and
+   writes (`:update`).
 3. **Infrastructure**: `Electric::ShapeDefinition` renders the Shape's
    `where`/`columns` from the scope's declared conditions, an explicit
    reviewable artifact. `Electric::Gateway` produces the config the browser
@@ -44,35 +47,55 @@ committed change including the `update_all` our bulk path uses. An
 diverge. Electric is read-path only, which structurally enforces "reads local,
 writes server": it physically cannot sync a write upward.
 
-## Live regions: the live query is the dependency graph
+## The reactive trigger: the live query is the dependency graph
 
-A reactive system needs to know *when* data changed, *which* fragments depend on
-it, and *how* to patch. We get the first two from the database: a `LiveRegion`
-binds an ERB partial to the query it observes, and a PGlite live query on that
-query tells us precisely when that fragment is stale. The query is an
-`ApplicationQuery` that declares its observable relation; the SQL the browser
+A reactive system needs to know *when* data changed, *which* view depends on it,
+and *how* to patch. We get "when" from the database, "which" is the slice the
+scope already defines, and "how" is a morph.
+
+**The one new primitive is the trigger.** `DataChange.topic(relation)`
+(`app/reactivity/data_change.rb`) derives a transport-neutral stream name from an
+Active Record relation, so a writer and a subscriber rendezvous on a string
+without the model ever naming a view. Today's Rails skips this layer:
+`broadcasts_to` goes straight from a model write to a Turbo Stream over Action
+Cable, and `ActiveSupport::Notifications` is instrumentation; neither is a
+data-change name you can point any transport at.
+
+**The dependency is derived from data, not from template structure.** A query is
+an `ApplicationQuery` that declares its observable relation; the SQL the browser
 watches is derived from that relation (`to_sql`), never written alongside it, so
-the server render and the browser's live query cannot drift. Declared and named,
-like `ClientScope`:
+the server render and the browser's live query cannot drift:
 
 ```ruby
-class Cells::ColumnAggregates < ApplicationQuery
-  observable_by :sums   # #watch_sql is sums.to_sql, derived from the relation
-  def sums = cells.group(:col).order(:col).select("col, SUM(value) AS total")
+class Cells::ChangeSignal < ApplicationQuery
+  observable_by :signal   # #sql is signal.to_sql, derived from the relation
+  # one cheap row that moves whenever any cell in the sheet changes
+  def signal = cells.select("COUNT(*) AS n, COALESCE(SUM(value * id), 0) AS checksum")
 end
-
-LiveRegion.register :totals,
-  partial: "sheets/totals",
-  query:   ->(sheet) { Cells::ColumnAggregates.new(sheet) },
-  locals:  ->(sheet) { {sheet:, sums: Cells::ColumnAggregates.new(sheet).by_column, ...} }
 ```
 
-The page is thin: each region element carries its watch SQL; the service worker
-runs the live query; when the result changes it names the region on a
-`BroadcastChannel`; the page re-fetches just that fragment, rendered by
-ActionView in the tab with no network, and Idiomorph patches it. PGlite's
-`live.query` re-fires on any change to the tables it touches, so the worker
-keeps the last result per region and broadcasts only on a real difference.
+**The receiver is a stock morphing `<turbo-frame>`**, not a bespoke view
+abstraction. `app/views/sheets/_grid_frame.html.erb` is one frame holding the
+whole grid (stats panel + table). The browser runs the change signal as a PGlite
+live query; when it fires, the frame reloads, and ActionView's output is morphed
+in (Turbo 8 morphing + Idiomorph). Because a morph patches only the cells that
+actually changed, a whole-grid re-render is non-destructive: an edit outside the
+visible window resettles the aggregates and leaves the grid-body nodes untouched.
+That is why per-fragment regions (an earlier `LiveRegion` helper) were removed:
+morphing makes them unnecessary.
+
+On the host, the precise route renders each fragment locally in JS from the
+replica (zero network); in the slice, the worker's live query fires and the
+frame reloads from the in-tab Rails. Same frame, same markup, the data source is
+the only difference. PGlite's `live.query` re-fires on any change to the tables
+it touches, so the worker keeps the last result and broadcasts only on a real
+difference.
+
+**Three strategies share this primitive** (`bin/rails reactive:compare` measures
+them): `/sheets/1` (precise local-first), `/sheets/1/coarse` (coarse local-first,
+one frame reloaded on the single change signal), and `/sheets/1/hotwire`
+(server-push, the same whole-grid morph pushed over Action Cable from the trigger
+instead of detected locally).
 
 **Update blinks** flash changed cells yellow if this user initiated the change,
 green otherwise. Both arrive through Electric, so the client marks cells it just
@@ -83,8 +106,7 @@ edited with a short TTL and treats everything else as remote.
 ruby.wasm); its reactive slot-diffing renderer is not built yet. A server-side
 spike already swaps the ERB engine (Erubi → Herb) under ActionView behind
 `REACTIONVIEW_ERB=1`, byte-identical output, suite green. When slot diffing
-ships, swap the morph for slot diffs; the live-region wiring above does not
-change.
+ships, swap the morph for slot diffs; the frame wiring above does not change.
 
 ## Layered architecture
 
@@ -93,14 +115,14 @@ Unidirectional flow, lower layers never depend on higher ones.
 ```
 Presentation   SheetsController, Cells::BulkUpdatesController, ClientScopesController
                  |                         |                          |
-Application    (render only)        Cells::BulkUpdate          client_scope macro
+Application    (render only)        Cells::BulkUpdate          ClientScope.define (config)
                                     SheetPolicy                SheetPolicy
                  |                         |                          |
 Domain         Cells::ColumnAggregates   Cell / Sheet              Cell scope
-               Cells::Region (VO)        Cells::Transform (VO)     (:for_sheet)
+               Cells::ChangeSignal (Q)   Cells::Transform (VO)     (:for_sheet)
                  |                         |                          |
 Infrastructure  Active Record / PGlite adapter            Electric::ShapeDefinition
-                                                          Electric::Gateway
+               DataChange.topic (trigger)                 Electric::Gateway
 ```
 
 ### The write ladder
@@ -120,6 +142,11 @@ reproduce each.
   50k-cell slice, aggregates compute locally (~18 ms, no network), a bulk edit
   applies optimistically, posts to Rails as one transaction (2,500 cells), and
   Electric reconciles. Local total matches server authority before and after.
+- **Three reactive strategies on one primitive.** `/sheets/1` (precise
+  local-first, JS render on the host), `/sheets/1/coarse` (coarse local-first,
+  one morphing frame reloaded on a single change signal), and `/sheets/1/hotwire`
+  (server-push, the same whole-grid morph over Action Cable). All three watch the
+  same `Cells::ChangeSignal`; `bin/rails reactive:compare` measures them.
 - **Server → client push**: a write from another client streams through the WAL
   to the browser with no user action and no refresh.
 - **Rollback on rejection**: a rejected write (403/422) rolls back the
@@ -139,7 +166,11 @@ reproduce each.
   action, two databases. The worker serves reads from in-VM Rails and forwards
   every non-GET to the host write authority; a write lands as one transaction
   and reconciles back through Electric. The optimistic write is the same in-VM
-  `Cells::BulkUpdate`, restored on host rejection.
+  `Cells::BulkUpdate`, restored on host rejection. The full end-to-end now
+  passes headless against the production build (`pwa/verify-slice.mjs`): the
+  production service worker boots, renders `/sheets/1` from in-VM Rails, and an
+  edit reconciles. The earlier boot wedge was the Vite dev-server SW shim under
+  Playwright, never the wasm module.
 - **Deployed to Fly.io.** Four apps: Rails (public), Electric
   (`ELECTRIC_SECRET`-gated), Postgres (`wal_level=logical`), and the slice
   (Caddy serving the PWA). Both demos run publicly: the standalone loop at
@@ -169,14 +200,39 @@ divergence-on-rejection bug they found is fixed and verified.
 - **`update_all` bypasses model `numericality`.** The `Transform` finite guard
   covers the operand; full per-cell validation on bulk writes is future work.
 - **Open known unknowns:** initial-seed cost, eviction, multi-tab coherence,
-  replica observability, cold start, and in-tab render cost (~600 ms per
-  fragment vs ~8 ms for the JS stand-in; Herb-style fragment diffing is the
-  lever).
+  replica observability, cold start, and in-tab render cost (a whole-grid
+  ActionView render in the VM costs far more than the ~8 ms JS stand-in;
+  morphing already keeps the DOM patch minimal, and Herb-style slot diffing is
+  the lever for the render itself).
+
+### Boot-time constraints the slice surfaced
+
+- **No database at boot.** `slice:pack` precompiles assets and the wasm pack
+  boots Rails with no Postgres reachable. `ClientScope.define` therefore resolves
+  the model, reflection, and policy lazily on first use; declaring a scope at
+  config time never opens a connection.
+- **Action Cable is excluded in wasm.** The `hotwire` strategy's channels
+  eager-load `ApplicationCable`, which has no `action_cable` in the wasm build.
+  `config/application.rb` ignores `app/channels` from the autoloader when
+  `RAILS_ENV=wasm`, so the slice boots without the server-push path.
 
 ## Run it
+
+Server-side (Rails on the server, browser keeps a PGlite replica):
 
 ```bash
 docker compose up -d            # Postgres (wal_level=logical) + Electric
 bin/rails db:prepare db:seed
 bin/rails server                # http://localhost:3000/sheets/1
 ```
+
+The slice (Rails in the browser):
+
+```bash
+bin/rails slice:pack            # pack app.wasm — never wasmify:pack (leaks secrets)
+cd pwa && npm install && npm run dev   # http://localhost:5173, then open /boot.html
+```
+
+Both run the same codebase. See the [README](../README.md) for the live URLs
+(`client-side-scopes.fly.dev/sheets/1` server-side and
+`client-side-scopes-slice.fly.dev` in-browser) and the verify scripts.

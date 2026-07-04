@@ -6,10 +6,14 @@ Rails.application.routes.draw do
   # grid: the ActionView fragment the slice page morphs in on replica changes.
   resources :sheets, only: [:show] do
     get :aggregates, on: :member
+    # grid: the precise route's reload endpoint. The whole grid is one Turbo
+    # Frame; a local change signal reloads it and morphs the diff in. Served by
+    # the in-VM Rails in the slice build, reading the local replica.
     get :grid, on: :member
-    # Named reactive regions: a live-query fire re-fetches one of these and
-    # morphs just its element. Served by the in-VM Rails in the slice build.
-    resources :regions, only: [:show], module: :sheets
+    # coarse: the same one-frame receiver, reloaded wholesale on any change (the
+    # "as simple as Hotwire" variant). Compare with /hotwire (the same whole-grid
+    # reload pushed from the server over Action Cable).
+    get :coarse, on: :member
   end
 
   # Phase B / B+ demos: Ruby in the browser (ruby.wasm) querying the local
@@ -22,8 +26,20 @@ Rails.application.routes.draw do
   # makes the slice return a clean 404 instead of rendering a page that 500s on
   # the missing assets.
   unless Rails.env.wasm?
+    # Action Cable carries the Turbo refresh broadcasts for /hotwire. Mounted
+    # explicitly (host-only; the slice has no cable server) because the engine is
+    # required conditionally, so the railtie does not auto-mount it.
+    mount ActionCable.server => "/cable"
+
     get "wasm" => "wasm#show"
     get "wasm_ar" => "wasm#ar"
+
+    # Comparison route: the coarse, server-push (plain Hotwire) spreadsheet.
+    # Host-only; it needs Action Cable, which the slice does not load.
+    get "sheets/:sheet_id/hotwire" => "sheets/hotwire#show", as: :sheet_hotwire
+    post "sheets/:sheet_id/hotwire" => "sheets/hotwire#update"
+    post "sheets/:sheet_id/hotwire/cell" => "sheets/hotwire#update_cell", as: :sheet_hotwire_cell
+    post "sheets/:sheet_id/hotwire/tick" => "sheets/hotwire#tick", as: :sheet_hotwire_tick
   end
 
   # The browser asks for a named client-side scope -> gets an Electric Shape config.

@@ -1,0 +1,113 @@
+<% content_for :title, "#{@sheet.name} — Hotwire (server-push)" %>
+<% content_for :head do %>
+  <%# Opt the page into morphing refreshes: broadcast_refresh re-fetches and
+      morphs, so the table updates in place without losing scroll. %>
+  <meta name="turbo-refresh-method" content="morph">
+  <meta name="turbo-refresh-scroll" content="preserve">
+  <%= action_cable_meta_tag %>
+<% end %>
+
+<%# Consumer: subscribe this page to the relation's stream. The same relation
+    the writer publishes to (DataChange.topic), so they rendezvous on the string
+    without naming each other. data-turbo-permanent keeps the ONE subscription
+    alive across morphs; without it every refresh re-subscribes and drops the
+    broadcast that arrives during the reconnect. %>
+<div id="cable-source" data-turbo-permanent>
+  <%= turbo_stream_from @topic %>
+</div>
+<%= render "sheets/grid_styles" %>
+<style>
+  .ss-btn { border-radius: .375rem; padding: .5rem 1rem; font-size: .875rem; font-weight: 600; color: #fff; border: 0; cursor: pointer; }
+  .ss-btn-amber { background: #f59e0b; } .ss-btn-amber:hover { background: #d97706; }
+  .ss-btn-emerald { background: #059669; } .ss-btn-emerald:hover { background: #047857; }
+  .ss-btn.active { box-shadow: inset 0 0 0 2px rgba(0,0,0,.25); }
+
+  /* Live data-flow + latency trace for the server-push path. */
+  .flow { display: flex; align-items: center; gap: 6px; padding: 8px 12px; border: 1px solid #e5e7eb; border-radius: .5rem; background: #fff; font-size: 12px; flex-wrap: wrap; }
+  .flow-node { padding: 3px 9px; border-radius: 999px; border: 1.5px solid #e5e7eb; color: #94a3b8; font-weight: 600; background: #fff; transition: background .3s, border-color .3s, color .3s; }
+  .flow-arrow { color: #cbd5e1; }
+  .flow.local .flow-node { border-color: #f59e0b; color: #92400e; background: #fffbeb; }
+  .flow.remote .flow-node { border-color: #16a34a; color: #14532d; background: #f0fdf4; }
+  .flow-latency { margin-left: auto; font-variant-numeric: tabular-nums; font-weight: 700; color: #334155; }
+</style>
+
+<div id="sheet-app" class="w-full max-w-[92rem] mx-auto"
+     data-controller="grid"
+     data-grid-cell-url-value="<%= sheet_hotwire_cell_path(@sheet) %>"
+     data-grid-tick-url-value="<%= sheet_hotwire_tick_path(@sheet) %>"
+     data-grid-max-value="<%= @max_value %>">
+  <header class="mb-4">
+    <h1 class="text-2xl font-bold"><%= @sheet.name %></h1>
+    <p class="text-sm text-gray-500">
+      Server-push (plain Hotwire). Click a cell to edit it, apply to a column, or
+      turn on server activity; each posts to Rails, which writes and publishes a
+      refresh to <code class="text-xs"><%= @topic %></code>,
+      and every open tab morphs. No local database, no client SQL.
+    </p>
+  </header>
+
+  <div class="mb-4 flex items-end gap-3 flex-wrap">
+    <%= form_with url: sheet_hotwire_path(@sheet), method: :post,
+          data: { action: "submit->grid#apply" },
+          class: "p-3 rounded-lg border bg-white flex items-end gap-3 flex-wrap" do |f| %>
+      <label class="text-sm">Column
+        <%= f.number_field :column, value: 3, min: 1, max: @sheet.col_count,
+              autocomplete: "off", class: "block border rounded px-2 py-1 w-20" %>
+      </label>
+      <label class="text-sm">Operation
+        <%= f.select :operation,
+              [["add +", "add"], ["multiply ×", "multiply"], ["set =", "set"]],
+              {}, class: "block border rounded px-2 py-1" %>
+      </label>
+      <label class="text-sm">Operand
+        <%= f.number_field :operand, value: 100, step: 1,
+              autocomplete: "off", class: "block border rounded px-2 py-1 w-24" %>
+      </label>
+      <%= f.submit "Apply to whole column", class: "ss-btn ss-btn-amber" %>
+    <% end %>
+
+    <%# Server activity: posts a server-originated write once a second, the same
+        idea as the other demos' toggle. Each tick morphs in a green change. %>
+    <button type="button" data-action="click->grid#toggleServer" data-grid-target="server"
+            class="ss-btn ss-btn-emerald">Server activity: off</button>
+  </div>
+
+  <%# Realtime data-flow + latency: which path the last change took, and how long
+      it took from your action to the morph landing. %>
+  <div data-grid-target="flow" class="flow mb-4">
+    <span class="flow-node">Your action</span><span class="flow-arrow">→</span>
+    <span class="flow-node">POST</span><span class="flow-arrow">→</span>
+    <span class="flow-node">Rails write</span><span class="flow-arrow">→</span>
+    <span class="flow-node">Action Cable</span><span class="flow-arrow">→</span>
+    <span class="flow-node">Morph</span>
+    <span data-grid-target="latency" class="flow-latency">make a change…</span>
+  </div>
+
+  <section class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+    <%= render "sheets/stats", stats: @stats %>
+  </section>
+
+  <div class="ss-wrap">
+    <%# Click a cell to edit; the grid controller posts the write and the refresh
+        broadcast morphs the value back in (and blinks it). %>
+    <table class="ss" id="grid">
+      <thead>
+        <tr>
+          <th class="ss-corner">#</th>
+          <th class="ss-rowmax">Max</th>
+          <% (1..@sheet.col_count).each do |col| %>
+            <th>C<%= col %></th>
+          <% end %>
+        </tr>
+      </thead>
+      <tbody><%= render "sheets/totals", sheet: @sheet, sums: @sums, stats: @stats %></tbody>
+      <tbody><%= render "sheets/rows", sheet: @sheet, row_limit: @row_limit, values: @values %></tbody>
+    </table>
+  </div>
+
+  <p class="text-xs text-gray-400 mt-2">
+    Showing rows 1–<%= @row_limit %> of <%= number_with_delimiter(@sheet.row_count) %>.
+    Open this page in two tabs: a change in one morphs into both over the Turbo
+    refresh, with no per-fragment wiring.
+  </p>
+</div>

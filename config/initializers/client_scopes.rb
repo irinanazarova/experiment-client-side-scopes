@@ -1,13 +1,15 @@
 # frozen_string_literal: true
 
-# Client scopes register themselves when their model loads (via the
-# ClientScopable macro, e.g. Cell.client_scope :sheet_cells). In production
-# eager loading pulls every model in at boot, so the registry is complete. In
-# dev/test (lazy loading) a request can reach ClientScope.fetch before the
-# model is ever referenced, so load the declaring models here.
+# Declare which server scopes are shippable to client replicas.
 #
-# This is the one place that names them; it is an infrastructure concern, not
-# the declaration surface (which lives on each model).
+# This is a sync/transport boundary, so it lives in the application's
+# configuration, not on the domain models (which stay plain Active Record
+# classes with plain scopes). ClientScope.define reads like the scope plus the
+# columns to ship; the model, the Electric filter, the policy subject and the
+# authorization rule are all derived. Wrapped in to_prepare so it re-registers
+# across code reloads in development.
 Rails.application.config.to_prepare do
-  Cell
+  ClientScope.define :sheet_cells,
+    scope: ->(sheet_id) { Cell.for_sheet(sheet_id) },
+    ship: %i[row col value formula]
 end

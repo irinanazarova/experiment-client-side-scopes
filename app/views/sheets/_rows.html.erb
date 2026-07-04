@@ -1,6 +1,6 @@
-<%# Inner content of the :rows live region (watches the visible-window query):
-    the rendered rows, each with its computed Max. Fires only when a cell in
-    the window changes, an edit outside rows 1..row_limit leaves it untouched. %>
+<%# The visible grid rows (Cells::GridWindow), each with its computed Max. A
+    morph patches only the cells that changed, so an edit outside rows
+    1..row_limit leaves these nodes untouched. %>
 <% (1..row_limit).each do |row| %>
   <% row_values = values[row] || {} %>
   <tr>

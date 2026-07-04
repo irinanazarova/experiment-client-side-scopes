@@ -1,10 +1,8 @@
+import { workerInstalling } from "/sw_register.js";
+
 async function registerServiceWorker() {
   const oldRegistrations = await navigator.serviceWorker.getRegistrations();
-  for (const registration of oldRegistrations) {
-    if (registration.installing.state === "installing") {
-      return;
-    }
-  }
+  if (workerInstalling(oldRegistrations)) return;
 
   const workerUrl =
     import.meta.env.MODE === "production"

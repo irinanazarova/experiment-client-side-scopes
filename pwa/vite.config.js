@@ -20,6 +20,15 @@ export default defineConfig({
       "/cells": "http://localhost:3000",
     },
   },
+  // `vite preview` (serving the production build of the slice) needs the same
+  // host proxy as dev, so an end-to-end check of the built service worker can
+  // reach the authorizing host for shapes and writes.
+  preview: {
+    proxy: {
+      "/client_scopes": "http://localhost:3000",
+      "/cells": "http://localhost:3000",
+    },
+  },
   optimizeDeps: {
     // PGlite carries its own wasm assets; Vite pre-bundling breaks them.
     exclude: ["@electric-sql/pglite", "@electric-sql/pglite-sync"],
