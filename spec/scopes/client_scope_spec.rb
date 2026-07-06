@@ -61,6 +61,28 @@ RSpec.describe ClientScope do
     end
   end
 
+  # slice:pack and asset precompile boot the app with no database connection, so
+  # declaring a scope must not touch one: the model, its belongs_to, the policy
+  # subject and the column list all resolve lazily, on first request. A regression
+  # that resolved the model at declaration time (re-breaking those boots) would
+  # issue a query here and fail.
+  describe "boot without a database" do
+    it "builds a definition without querying (nothing resolves the model at declaration)" do
+      queries = 0
+      subscription = ActiveSupport::Notifications.subscribe("sql.active_record") do |*, payload|
+        queries += 1 unless payload[:name] == "SCHEMA" || payload[:sql].match?(/TRANSACTION/)
+      end
+
+      ClientScope::Definition.new(
+        name: :boot_probe, scope: ->(sheet_id) { Cell.for_sheet(sheet_id) },
+        ship: %i[value], authorize: :sync?, via: nil
+      )
+    ensure
+      ActiveSupport::Notifications.unsubscribe(subscription)
+      expect(queries).to eq(0)
+    end
+  end
+
   describe ".assert_policy_rule!" do
     it "passes when the guarding rule exists" do
       expect { described_class.assert_policy_rule!(:sheet_cells, Sheet, :sync?) }

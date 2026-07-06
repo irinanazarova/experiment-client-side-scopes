@@ -25,15 +25,21 @@ export function mountReactiveFrame(frame, { classify, isEditing = () => false, o
   let reloadPending = false;
   let pumping = false;
   let debounceTimer = null;
+  let pausedResume = null; // a render held mid-flight because a cell editor was open
 
   frame.addEventListener("turbo:before-frame-render", (event) => {
-    // Don't let a reload land on an open editor: cancel the render and re-arm,
-    // so the refresh happens the moment the edit closes (via flush()).
-    if (isEditing()) { event.preventDefault(); reloadPending = true; return; }
-    pendingSnapshot = classify ? snapshotCells(frame) : null;
     // Morph in place rather than replace, so scroll position survives and the
-    // flash diff has stable nodes to compare against.
+    // flash diff has stable nodes to compare against. Turbo reads detail.render
+    // even on a paused render, so the held render (below) morphs too.
     event.detail.render = (current, next) => Idiomorph.morph(current, next.innerHTML, morphOptions);
+
+    // A reload's response arrived while an editor is open. preventDefault() makes
+    // Turbo PAUSE the render (not skip it) until detail.resume() is called; hold
+    // that resume and fire it the moment the edit closes (flush). Pausing without
+    // ever resuming would wedge the frame: Turbo leaves view.renderPromise pending
+    // and every later reload awaits it forever.
+    if (isEditing()) { event.preventDefault(); pausedResume = event.detail.resume; return; }
+    pendingSnapshot = classify ? snapshotCells(frame) : null;
   });
 
   frame.addEventListener("turbo:frame-render", () => {
@@ -71,5 +77,19 @@ export function mountReactiveFrame(frame, { classify, isEditing = () => false, o
     debounceTimer = setTimeout(pump, debounceMs);
   };
 
-  return { requestReload, flush: pump };
+  // Called when a cell editor closes: first resume a render that was held mid-
+  // flight (morphing in what already arrived), then pump any reload queued while
+  // the editor was open.
+  const flush = () => {
+    if (pausedResume) {
+      const resume = pausedResume;
+      pausedResume = null;
+      pendingSnapshot = classify ? snapshotCells(frame) : null;
+      reloadStartedAt = performance.now();
+      resume(); // completes the paused render -> turbo:frame-render -> flash + onRender
+    }
+    return pump();
+  };
+
+  return { requestReload, flush };
 }

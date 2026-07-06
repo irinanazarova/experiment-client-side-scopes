@@ -46,10 +46,13 @@ function mountWatcherLiveness(announce) {
       const sw = navigator.serviceWorker?.controller;
       if (!sw) return resolve(false);
       const ch = new MessageChannel();
-      const timer = setTimeout(() => resolve(false), 3000); // no reply -> evicted (or busy)
-      ch.port1.onmessage = (ev) => { clearTimeout(timer); resolve(!!ev.data?.watching); };
+      // Close our port on every exit so a heartbeat every ~10s doesn't leak a
+      // MessagePort pair over a long-lived tab.
+      const finish = (v) => { ch.port1.close(); resolve(v); };
+      const timer = setTimeout(() => finish(false), 3000); // no reply -> evicted (or busy)
+      ch.port1.onmessage = (ev) => { clearTimeout(timer); finish(!!ev.data?.watching); };
       try { sw.postMessage({ type: "ping-watchers" }, [ch.port2]); }
-      catch { clearTimeout(timer); resolve(false); }
+      catch { clearTimeout(timer); finish(false); }
     });
 
   const banner = makeWakeBanner();

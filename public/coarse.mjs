@@ -144,12 +144,23 @@ function wireCellEdit() {
     input.focus();
     input.select();
 
-    // Closing the editor flushes any reload that arrived while it was open.
+    // Closing the editor replaces the cell's content, which removes the focused
+    // input and fires its blur handler. Guard so Enter (or Escape) doesn't then
+    // re-enter through that blur and fire a second write — or, after a cancel,
+    // commit the cell at all. Closing also flushes any reload held while open.
+    let done = false;
     const close = () => { editing = false; reactor.flush(); };
-    const cancel = () => { td.textContent = original; close(); };
+    const cancel = () => {
+      if (done) return;
+      done = true;
+      td.textContent = original;
+      close();
+    };
     const commit = async () => {
+      if (done) return;
       const val = parseFloat(input.value);
       if (Number.isNaN(val)) return cancel();
+      done = true;
       td.textContent = original; // restore until the authoritative reload lands
       close();
       await write({ col, operation: "set", operand: val, rowFrom: row, rowTo: row });

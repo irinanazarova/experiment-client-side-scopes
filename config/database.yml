@@ -31,7 +31,7 @@ production:
 # query_cache: false is REQUIRED here. The replica mutates out-of-band — Electric
 # reconciles rows and the service worker applies optimistic writes straight
 # through PGlite, never via ActiveRecord — so AR never invalidates its per-pool
-# query cache. With it on, a live-region re-render (Sheets::RegionsController)
+# query cache. With it on, a grid-frame reload (SheetsController#grid / #coarse)
 # replays a cached pre-write SELECT and the grid freezes at the initial snapshot
 # even though PGlite already has the new data. PGlite is local, so uncached
 # reads are cheap.
