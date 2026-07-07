@@ -129,6 +129,7 @@ see [docs/verify.md](docs/verify.md) for the exact recipe.
 ## More
 
 - **[docs/architecture.md](docs/architecture.md)** — the design and the layers.
+- **[docs/performance.md](docs/performance.md)** — measured: local-first vs classic Hotwire, latency and load.
 - **[docs/reactive-rails.md](docs/reactive-rails.md)** — the primitive proposal (local note).
 - **[docs/verify.md](docs/verify.md)** — step-by-step: what to test and what you should see.
 - **[docs/deploy.md](docs/deploy.md)** — the four-app Fly.io stack.
